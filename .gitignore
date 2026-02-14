@@ -1,0 +1,11 @@
+# Binary (root-anchored to avoid matching src/ files)
+/bsdsocktest
+
+# Build artifacts
+obj/
+*.o
+*.d
+
+# Distribution archives
+*.lha
+dist/*.lha
