@@ -79,6 +79,17 @@ LONG get_bsd_h_errno(void)
     return bsd_h_errno;
 }
 
+void restore_bsd_errno(void)
+{
+    /* Restore via both SetErrnoPtr (resets size) and SocketBaseTags
+     * (tag path) to fully undo SetErrnoPtr(&byte, 1) etc. */
+    SetErrnoPtr(&bsd_errno, sizeof(bsd_errno));
+    SocketBaseTags(
+        SBTM_SETVAL(SBTC_ERRNOLONGPTR), (ULONG)&bsd_errno,
+        SBTM_SETVAL(SBTC_HERRNOLONGPTR), (ULONG)&bsd_h_errno,
+        TAG_DONE);
+}
+
 /* ---- Socket helpers ---- */
 
 LONG make_tcp_socket(void)

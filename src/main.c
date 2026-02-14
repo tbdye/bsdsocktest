@@ -14,6 +14,10 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Ensure sufficient stack for test buffers and nested calls.
+ * libnix startup code checks this and expands the stack if needed. */
+unsigned long __stack = 65536;
+
 /* ReadArgs template */
 #define TEMPLATE "CATEGORY/K,HOST/K,PORT/N,LOG/K,ALL/S,LOOPBACK/S,NETWORK/S,LIST/S,VERBOSE/S"
 

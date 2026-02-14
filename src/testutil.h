@@ -8,6 +8,7 @@
 #define BSDSOCKTEST_TESTUTIL_H
 
 #include <exec/types.h>
+#include <proto/exec.h>
 
 /* Default base port for test sockets */
 #define DEFAULT_BASE_PORT 7700
@@ -16,6 +17,14 @@
 #ifndef INADDR_LOOPBACK
 #define INADDR_LOOPBACK 0x7f000001UL
 #endif
+
+/* Check for Ctrl-C between tests. Emits TAP bail out and returns. */
+#define CHECK_CTRLC() do { \
+    if (SetSignal(0L, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) { \
+        tap_bail("Interrupted by Ctrl-C"); \
+        return; \
+    } \
+} while(0)
 
 /* ---- Library management ---- */
 
@@ -35,6 +44,11 @@ LONG get_bsd_errno(void);
 
 /* Access the bsdsocket h_errno value. */
 LONG get_bsd_h_errno(void);
+
+/* Restore the bsd_errno/h_errno pointers after SetErrnoPtr experiments.
+ * Call this after any test that uses SetErrnoPtr to change the errno
+ * pointer to a local variable. */
+void restore_bsd_errno(void);
 
 /* ---- Socket helpers ---- */
 
