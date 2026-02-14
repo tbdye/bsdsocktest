@@ -7,6 +7,7 @@
 #include "tap.h"
 #include "testutil.h"
 #include "tests.h"
+#include "helper_proto.h"
 
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -58,7 +59,7 @@ static const struct test_category categories[] = {
     { "transfer",   run_transfer_tests,   TIER_LOOPBACK },
     { "errno",      run_errno_tests,      TIER_LOOPBACK },
     { "misc",       run_misc_tests,       TIER_LOOPBACK },
-    { "icmp",       run_icmp_tests,       TIER_NETWORK  },
+    { "icmp",       run_icmp_tests,       TIER_BOTH     },
     { "throughput", run_throughput_tests,  TIER_BOTH     },
     { NULL, NULL, 0 }
 };
@@ -177,6 +178,16 @@ int main(int argc, char **argv)
     /* Initialize TAP output */
     tap_init(get_bsdsocket_version());
 
+    /* Connect to host helper if HOST was specified */
+    if (args[ARG_HOST]) {
+        const char *host_str = (const char *)args[ARG_HOST];
+        if (!helper_connect(host_str)) {
+            tap_diag("Warning: could not connect to host helper");
+            tap_diagf("  host=%s, port=%d", host_str, HELPER_CTRL_PORT);
+            tap_diag("  Network tests will be skipped");
+        }
+    }
+
     /* Dispatch categories */
     for (cat = categories; cat->name; cat++) {
         /* Check for Ctrl-C between categories */
@@ -196,6 +207,9 @@ int main(int argc, char **argv)
     if (!ran_any && cat_filter) {
         tap_diagf("Unknown category: %s", cat_filter);
     }
+
+    /* Disconnect from host helper */
+    helper_quit();
 
     /* Emit trailing plan line (TAP v12 "plan at the end") */
     tap_plan(tap_get_total());

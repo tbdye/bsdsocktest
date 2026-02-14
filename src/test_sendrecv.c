@@ -4,13 +4,15 @@
  * Tests: send, recv, sendto, recvfrom, sendmsg, recvmsg,
  *        MSG_PEEK, MSG_OOB, non-blocking behavior.
  *
- * 15 tests, port offsets 20-39.
+ * 19 tests, port offsets 20-39 (loopback) and 160-179 (network).
  */
 
 #include "tap.h"
 #include "testutil.h"
+#include "helper_proto.h"
 
 #include <proto/bsdsocket.h>
+#include <proto/dos.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -575,4 +577,249 @@ void run_sendrecv_tests(void)
     safe_close(server);
     safe_close(client);
     safe_close(listener);
+
+    CHECK_CTRLC();
+
+    /* ==== Network send/recv tests — require host helper ==== */
+
+    if (!helper_is_connected()) {
+        tap_skip("tcp_network_64k - host helper not connected");
+        CHECK_CTRLC();
+        tap_skip("udp_network_datagram - host helper not connected");
+        CHECK_CTRLC();
+        tap_skip("accept_external - host helper not connected");
+        CHECK_CTRLC();
+        tap_skip("tcp_network_large - host helper not connected");
+        return;
+    }
+
+    /* 123. tcp_network_64k */
+    {
+        LONG fd;
+        LONG total_sent, total_recv, verified_bytes;
+        int recv_offset, i;
+        LONG n;
+
+        fd = helper_connect_service(HELPER_TCP_ECHO);
+        if (fd >= 0) {
+            set_recv_timeout(fd, 10);
+            fill_test_pattern(sbuf, 8192, 0);
+
+            /* Send 64KB (8 x 8KB) */
+            total_sent = 0;
+            for (i = 0; i < 8; i++) {
+                n = send(fd, (UBYTE *)sbuf, 8192, 0);
+                if (n <= 0) break;
+                total_sent += n;
+            }
+
+            /* Receive with incremental chunk verification */
+            total_recv = 0;
+            verified_bytes = 0;
+            recv_offset = 0;
+            while (total_recv < 65536) {
+                n = recv(fd, (UBYTE *)rbuf + recv_offset,
+                         8192 - recv_offset, 0);
+                if (n <= 0) break;
+                total_recv += n;
+                recv_offset += n;
+                if (recv_offset >= 8192) {
+                    if (verify_test_pattern(rbuf, 8192, 0) == 0)
+                        verified_bytes += 8192;
+                    recv_offset = 0;
+                }
+            }
+            if (recv_offset > 0) {
+                if (verify_test_pattern(rbuf, recv_offset, 0) == 0)
+                    verified_bytes += recv_offset;
+            }
+
+            tap_ok(verified_bytes >= 65536,
+                   "tcp_network_64k - 64KB echo integrity through network");
+            tap_diagf("  sent=%ld recv=%ld verified=%ld",
+                      (long)total_sent, (long)total_recv,
+                      (long)verified_bytes);
+            safe_close(fd);
+        } else {
+            tap_ok(0, "tcp_network_64k - could not connect to echo server");
+        }
+    }
+
+    CHECK_CTRLC();
+
+    /* 124. udp_network_datagram */
+    {
+        LONG fd;
+        struct sockaddr_in echo_addr;
+        socklen_t fromlen;
+        LONG n;
+
+        fd = make_udp_socket();
+        if (fd >= 0) {
+            memset(&echo_addr, 0, sizeof(echo_addr));
+            echo_addr.sin_family = AF_INET;
+            echo_addr.sin_port = htons(HELPER_UDP_ECHO);
+            echo_addr.sin_addr.s_addr = helper_addr();
+
+            fill_test_pattern(sbuf, 512, 0x55);
+            n = sendto(fd, (UBYTE *)sbuf, 512, 0,
+                       (struct sockaddr *)&echo_addr, sizeof(echo_addr));
+
+            if (n == 512) {
+                set_recv_timeout(fd, 5);
+                fromlen = sizeof(from_addr);
+                n = recvfrom(fd, (UBYTE *)rbuf, sizeof(rbuf), 0,
+                             (struct sockaddr *)&from_addr, &fromlen);
+                if (n == 512) {
+                    mismatch = verify_test_pattern(rbuf, 512, 0x55);
+                    tap_ok(mismatch == 0,
+                           "udp_network_datagram - 512B UDP echo matches");
+                    tap_diagf("  sent=512 recv=%ld", (long)n);
+                } else {
+                    tap_ok(0, "udp_network_datagram - recv failed or wrong size");
+                    tap_diagf("  recv=%ld errno=%ld",
+                              (long)n, (long)get_bsd_errno());
+                }
+            } else {
+                tap_ok(0, "udp_network_datagram - sendto failed");
+                tap_diagf("  sendto=%ld errno=%ld",
+                          (long)n, (long)get_bsd_errno());
+            }
+            safe_close(fd);
+        } else {
+            tap_ok(0, "udp_network_datagram - could not create UDP socket");
+        }
+    }
+
+    CHECK_CTRLC();
+
+    /* 125. accept_external */
+    {
+        LONG ext_listener, accepted;
+        struct sockaddr_in bind_addr;
+        fd_set readfds;
+        struct timeval tv;
+        LONG n;
+
+        ext_listener = make_tcp_socket();
+        if (ext_listener >= 0) {
+            one = 1;
+            setsockopt(ext_listener, SOL_SOCKET, SO_REUSEADDR,
+                       &one, sizeof(one));
+            memset(&bind_addr, 0, sizeof(bind_addr));
+            bind_addr.sin_family = AF_INET;
+            bind_addr.sin_port = htons(get_test_port(161));
+            bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+            bind(ext_listener, (struct sockaddr *)&bind_addr,
+                 sizeof(bind_addr));
+            listen(ext_listener, 5);
+
+            if (helper_request_connect(get_test_port(161))) {
+                /* WaitSelect for incoming connection */
+                FD_ZERO(&readfds);
+                FD_SET(ext_listener, &readfds);
+                tv.tv_secs = 5;
+                tv.tv_micro = 0;
+                rc = WaitSelect(ext_listener + 1, &readfds, NULL, NULL,
+                                &tv, NULL);
+                if (rc > 0) {
+                    accepted = accept(ext_listener, NULL, NULL);
+                    if (accepted >= 0) {
+                        set_recv_timeout(accepted, 5);
+                        total = 0;
+                        while (total < 30) {
+                            n = recv(accepted, (UBYTE *)rbuf + total,
+                                     30 - total, 0);
+                            if (n <= 0) break;
+                            total += n;
+                        }
+                        tap_ok(total == 30 &&
+                               memcmp(rbuf,
+                                      "BSDSOCKTEST HELLO FROM HELPER\n",
+                                      30) == 0,
+                               "accept_external - accepted connection from helper");
+                        if (total != 30)
+                            tap_diagf("  received %d of 30 bytes", total);
+                        safe_close(accepted);
+                    } else {
+                        tap_ok(0, "accept_external - accept failed");
+                    }
+                } else {
+                    tap_ok(0, "accept_external - no incoming connection within 5s");
+                }
+            } else {
+                tap_ok(0, "accept_external - helper declined CONNECT");
+            }
+            safe_close(ext_listener);
+        } else {
+            tap_ok(0, "accept_external - could not create listener");
+        }
+    }
+
+    CHECK_CTRLC();
+
+    /* 126. tcp_network_large */
+    {
+        LONG fd;
+        LONG total_sent, total_recv, verified_bytes;
+        int recv_offset, i;
+        LONG n;
+        struct DateStamp ds_before, ds_after;
+        LONG elapsed_ticks, elapsed_ms, kbps;
+
+        fd = helper_connect_service(HELPER_TCP_ECHO);
+        if (fd >= 0) {
+            set_recv_timeout(fd, 30);
+            fill_test_pattern(sbuf, 8192, 0);
+
+            DateStamp(&ds_before);
+
+            /* Send 256KB (32 x 8KB) */
+            total_sent = 0;
+            for (i = 0; i < 32; i++) {
+                n = send(fd, (UBYTE *)sbuf, 8192, 0);
+                if (n <= 0) break;
+                total_sent += n;
+            }
+
+            /* Receive with incremental chunk verification */
+            total_recv = 0;
+            verified_bytes = 0;
+            recv_offset = 0;
+            while (total_recv < 262144) {
+                n = recv(fd, (UBYTE *)rbuf + recv_offset,
+                         8192 - recv_offset, 0);
+                if (n <= 0) break;
+                total_recv += n;
+                recv_offset += n;
+                if (recv_offset >= 8192) {
+                    if (verify_test_pattern(rbuf, 8192, 0) == 0)
+                        verified_bytes += 8192;
+                    recv_offset = 0;
+                }
+            }
+            if (recv_offset > 0) {
+                if (verify_test_pattern(rbuf, recv_offset, 0) == 0)
+                    verified_bytes += recv_offset;
+            }
+
+            DateStamp(&ds_after);
+            elapsed_ticks = (ds_after.ds_Days - ds_before.ds_Days) * 24L * 60 * 50 * 60
+                          + (ds_after.ds_Minute - ds_before.ds_Minute) * 50L * 60
+                          + (ds_after.ds_Tick - ds_before.ds_Tick);
+            elapsed_ms = elapsed_ticks * 20;
+            kbps = (elapsed_ms > 0)
+                 ? (verified_bytes / 1024L) * 1000L / elapsed_ms
+                 : 0;
+
+            tap_ok(verified_bytes >= 262144,
+                   "tcp_network_large - 256KB echo integrity through network");
+            tap_diagf("  sent=%ld recv=%ld verified=%ld ms=%ld KB/s=%ld",
+                      (long)total_sent, (long)total_recv,
+                      (long)verified_bytes, (long)elapsed_ms, (long)kbps);
+            safe_close(fd);
+        } else {
+            tap_ok(0, "tcp_network_large - could not connect to echo server");
+        }
+    }
 }

@@ -13,6 +13,7 @@ SRCS = \
 	src/main.c \
 	src/tap.c \
 	src/testutil.c \
+	src/helper_proto.c \
 	src/test_socket.c \
 	src/test_sendrecv.c \
 	src/test_sockopt.c \
