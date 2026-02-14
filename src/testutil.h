@@ -94,6 +94,14 @@ void set_base_port(int port);
 /* Get a test port: base + offset. */
 int get_test_port(int offset);
 
+/* ---- Signal helpers ---- */
+
+/* Allocate a signal bit. Returns the bit number (0-31) or -1 on failure. */
+BYTE alloc_signal(void);
+
+/* Free a signal bit. Tolerates -1 (no-op). */
+void free_signal(BYTE sigbit);
+
 /* ---- Data patterns ---- */
 
 /* Fill a buffer with a deterministic test pattern seeded by 'seed'. */

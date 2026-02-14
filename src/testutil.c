@@ -208,6 +208,19 @@ int get_test_port(int offset)
     return base_port + offset;
 }
 
+/* ---- Signal helpers ---- */
+
+BYTE alloc_signal(void)
+{
+    return AllocSignal(-1);
+}
+
+void free_signal(BYTE sigbit)
+{
+    if (sigbit >= 0)
+        FreeSignal(sigbit);
+}
+
 /* ---- Data patterns ---- */
 
 void fill_test_pattern(unsigned char *buf, int len, unsigned int seed)
