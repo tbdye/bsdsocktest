@@ -1,0 +1,56 @@
+Short:    Amiga bsdsocket.library conformance test suite
+Uploader: thomas@tfenet.com (Thomas Dye)
+Author:   thomas@tfenet.com (Thomas Dye)
+Type:     comm/tcp
+Version:  1.0
+Requires: AmigaOS 2.0+, 68020+, bsdsocket.library compatible TCP/IP stack
+Architecture: m68k-amigaos
+
+bsdsocktest is an open-source conformance test suite for the Amiga
+bsdsocket.library API.  It exercises the BSD socket interface as
+implemented by Amiga TCP/IP stacks (Roadshow, AmiTCP, Miami, Genesis)
+and by emulators (Amiberry, WinUAE).  The suite contains 141 tests
+across 12 categories, covering socket lifecycle, data transfer, async
+I/O, name resolution, descriptor transfer, and throughput benchmarks.
+
+Features:
+
+  - 141 tests in 12 categories (socket, sendrecv, sockopt, waitselect,
+    signals, dns, utility, transfer, errno, misc, icmp, throughput)
+  - Self-contained loopback tests run without any network
+  - Network tests use a Python host helper (included)
+  - Compact dashboard output on screen with optional verbose mode
+  - Full TAP v12 machine-readable log file
+  - Data-driven known-failures system per TCP/IP stack
+  - Supports both CLI and Workbench launch (with Tool Types)
+  - Pagination with automatic screen size detection
+  - Ctrl-C handling for clean interruption
+
+Usage:
+
+  From the CLI, copy bsdsocktest to your Amiga and run:
+
+    bsdsocktest
+
+  This runs all loopback tests.  For network tests, start the host
+  helper on a reachable machine:
+
+    python3 bsdsocktest_helper.py
+
+  Then on the Amiga:
+
+    bsdsocktest HOST <host-ip>
+
+  Use LIST to see available categories, VERBOSE for per-test detail,
+  or CATEGORY <name> to run a single category.  Results are written
+  to bsdsocktest.log (TAP v12 format) in the current directory.
+
+Compatibility:
+
+  Tested against Roadshow 4.364: 137 passed, 4 known stack deviations,
+  0 unexpected failures.  The known deviations are documented behavioral
+  differences (MSG_OOB not supported, loopback RST generation, SET-only
+  errno pointer tags with no GET support) and do not indicate bugs in
+  the test suite.
+
+License: GNU General Public License v3.0
