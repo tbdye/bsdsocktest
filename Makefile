@@ -1,5 +1,5 @@
 # bsdsocktest — Amiga bsdsocket.library conformance test suite
-# Cross-compilation for m68k-amigaos using bebbo's GCC
+# Cross-compilation for m68k-amigaos using m68k-amigaos-gcc
 
 PREFIX  ?= /opt/amiga
 CC       = $(PREFIX)/bin/m68k-amigaos-gcc

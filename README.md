@@ -40,7 +40,7 @@ Configure options via the icon's Tool Types (HOST, VERBOSE, LOOPBACK, etc.).
 
 ### Prerequisites
 
-- [bebbo's m68k-amigaos-gcc](https://github.com/bebbo/amiga-gcc) cross-compiler
+- [m68k-amigaos-gcc](https://github.com/AmigaPorts/m68k-amigaos-gcc) cross-compiler
   toolchain, installed at `/opt/amiga` (or override with `PREFIX`)
 
 ### Build
@@ -195,7 +195,7 @@ If HOST is specified but the helper is not running, the test suite will bail
 out. See [host/README.md](host/README.md) for detailed host helper
 documentation.
 
-## Compatibility
+## Tested Stacks
 
 ### Roadshow 1.15 (bsdsocket.library 4.364)
 
