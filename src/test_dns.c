@@ -104,14 +104,14 @@ void run_dns_tests(void)
 
     CHECK_CTRLC();
 
-    /* 94. getservbyport_80 */
-    s = getservbyport(htons(80), (STRPTR)"tcp");
+    /* 94. getservbyport_21 */
+    s = getservbyport(htons(21), (STRPTR)"tcp");
     if (s) {
-        tap_ok(stricmp((const char *)s->s_name, "http") == 0,
-               "getservbyport(): port 80/\"tcp\" -> \"http\" [BSD 4.4]");
+        tap_ok(stricmp((const char *)s->s_name, "ftp") == 0,
+               "getservbyport(): port 21/\"tcp\" -> \"ftp\" [BSD 4.4]");
         tap_diagf("  name=%s", (const char *)s->s_name);
     } else {
-        tap_skip("services database does not include port 80");
+        tap_skip("services database does not include port 21");
     }
 
     CHECK_CTRLC();

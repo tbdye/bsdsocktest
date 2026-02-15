@@ -1905,24 +1905,25 @@ Checks that the return value is NULL.
 
 **Expected Result:** `getservbyname()` returns NULL.
 
-### Test 94 --- getservbyport(): port 80/"tcp" -> "http"
+### Test 94 --- getservbyport(): port 21/"tcp" -> "ftp"
 
 **Category:** dns
 **API:** getservbyport()
 **Standard:** [FreeBSD getservbyport(3)](https://man.freebsd.org/cgi/man.cgi?query=getservbyport&sektion=3)
 
-**Rationale:** The reverse service lookup must map port 80 with protocol
-"tcp" back to the service name "http". This validates bidirectional
-service database access.
+**Rationale:** The reverse service lookup must map port 21 with protocol
+"tcp" back to the service name "ftp". This validates bidirectional
+service database access. Port 21/ftp is used rather than port 80/http
+because some services databases list "www" as the primary name for port 80.
 
-**Methodology:** Calls `getservbyport(htons(80), "tcp")`. If the call
-returns a non-NULL `servent`, checks that `s_name` equals "http"
+**Methodology:** Calls `getservbyport(htons(21), "tcp")`. If the call
+returns a non-NULL `servent`, checks that `s_name` equals "ftp"
 (case-insensitive comparison via `stricmp()`). If the call returns NULL,
 the test is skipped with a diagnostic noting that the services database
-does not include port 80.
+does not include port 21.
 
 **Expected Result:** `getservbyport()` returns a `servent` with name
-"http", or the test is skipped if the services database lacks the entry.
+"ftp", or the test is skipped if the services database lacks the entry.
 
 ### Test 95 --- getprotobyname(): "tcp" -> protocol 6
 
