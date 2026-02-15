@@ -1,5 +1,6 @@
 # Binary (root-anchored to avoid matching src/ files)
 /bsdsocktest
+/bsdsocktest.info
 
 # Build artifacts
 obj/

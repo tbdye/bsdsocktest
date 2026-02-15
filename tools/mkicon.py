@@ -6,7 +6,7 @@ Creates a standard old-style (OS 2.x/3.x compatible) WBTOOL icon with
 4-color planar imagery, complement highlighting, and Tool Types.
 
 Usage: python3 tools/mkicon.py [output_path]
-       Default output: bsdsocktest.info
+       Default output: dist/bsdsocktest.info
 """
 
 import struct
@@ -220,7 +220,7 @@ if __name__ == '__main__':
         preview_icon()
         sys.exit(0)
 
-    output_path = 'bsdsocktest.info'
+    output_path = 'dist/bsdsocktest.info'
     for arg in sys.argv[1:]:
         if not arg.startswith('-'):
             output_path = arg
