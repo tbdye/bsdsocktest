@@ -5,7 +5,7 @@
  *        signal interruption, nfds boundary, >64 descriptors,
  *        connect readiness, peer close readiness.
  *
- * 15 tests (70-84), port offsets 60-79.
+ * 15 tests (58-72), port offsets 60-79.
  */
 
 #include "tap.h"
@@ -13,7 +13,6 @@
 
 #include <proto/bsdsocket.h>
 #include <proto/exec.h>
-#include <proto/dos.h>
 
 #include <errno.h>
 #include <string.h>
@@ -26,8 +25,8 @@ void run_waitselect_tests(void)
     LONG closed_fd;
     fd_set readfds, writefds, exceptfds;
     struct timeval tv;
-    struct DateStamp before, after;
-    LONG elapsed_ticks;
+    struct bst_timestamp ts_before, ts_after;
+    LONG elapsed_ms;
     LONG dtsize;
     LONG optval;
     socklen_t optlen;
@@ -40,7 +39,7 @@ void run_waitselect_tests(void)
 
     /* ---- Read/write readiness ---- */
 
-    /* 70. ws_read_ready */
+    /* 58. ws_read_ready */
     port = get_test_port(60);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -54,9 +53,9 @@ void run_waitselect_tests(void)
         tv.tv_micro = 0;
         rc = WaitSelect(server + 1, &readfds, NULL, NULL, &tv, NULL);
         tap_ok(rc >= 1 && FD_ISSET(server, &readfds),
-               "ws_read_ready - WaitSelect detects readable after send");
+               "WaitSelect(): read readiness after data send [AmiTCP]");
     } else {
-        tap_ok(0, "ws_read_ready - could not establish connection");
+        tap_ok(0, "WaitSelect(): read readiness after data send [AmiTCP]");
     }
     safe_close(server);
     safe_close(client);
@@ -64,7 +63,7 @@ void run_waitselect_tests(void)
 
     CHECK_CTRLC();
 
-    /* 71. ws_write_ready */
+    /* 59. ws_write_ready */
     port = get_test_port(61);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -76,9 +75,9 @@ void run_waitselect_tests(void)
         tv.tv_micro = 0;
         rc = WaitSelect(client + 1, NULL, &writefds, NULL, &tv, NULL);
         tap_ok(rc >= 1 && FD_ISSET(client, &writefds),
-               "ws_write_ready - connected socket with empty buffer is writable");
+               "WaitSelect(): write readiness on connected socket [AmiTCP]");
     } else {
-        tap_ok(0, "ws_write_ready - could not establish connection");
+        tap_ok(0, "WaitSelect(): write readiness on connected socket [AmiTCP]");
     }
     safe_close(server);
     safe_close(client);
@@ -88,7 +87,7 @@ void run_waitselect_tests(void)
 
     /* ---- Timeout behavior ---- */
 
-    /* 72. ws_timeout_zero */
+    /* 60. ws_timeout_zero */
     port = get_test_port(62);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -98,17 +97,16 @@ void run_waitselect_tests(void)
         FD_SET(server, &readfds);
         tv.tv_secs = 0;
         tv.tv_micro = 0;
-        DateStamp(&before);
+        timer_now(&ts_before);
         rc = WaitSelect(server + 1, &readfds, NULL, NULL, &tv, NULL);
-        DateStamp(&after);
-        elapsed_ticks = (after.ds_Minute - before.ds_Minute) * 50 * 60
-                      + (after.ds_Tick - before.ds_Tick);
-        tap_ok(rc == 0 && elapsed_ticks < 5,
-               "ws_timeout_zero - tv={0,0} returns immediately with 0");
-        tap_diagf("  elapsed: %ld ticks, return: %d",
-                  (long)elapsed_ticks, rc);
+        timer_now(&ts_after);
+        elapsed_ms = (LONG)timer_elapsed_ms(&ts_before, &ts_after);
+        tap_ok(rc == 0 && elapsed_ms < 100,
+               "WaitSelect(): tv={0,0} immediate poll [AmiTCP]");
+        tap_diagf("  elapsed: %ldms, return: %d",
+                  (long)elapsed_ms, rc);
     } else {
-        tap_ok(0, "ws_timeout_zero - could not establish connection");
+        tap_ok(0, "WaitSelect(): tv={0,0} immediate poll [AmiTCP]");
     }
     safe_close(server);
     safe_close(client);
@@ -116,7 +114,7 @@ void run_waitselect_tests(void)
 
     CHECK_CTRLC();
 
-    /* 73. ws_timeout_expires */
+    /* 61. ws_timeout_expires */
     port = get_test_port(63);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -126,20 +124,22 @@ void run_waitselect_tests(void)
         FD_SET(server, &readfds);
         tv.tv_secs = 1;
         tv.tv_micro = 0;
-        DateStamp(&before);
+        timer_now(&ts_before);
         rc = WaitSelect(server + 1, &readfds, NULL, NULL, &tv, NULL);
-        DateStamp(&after);
-        elapsed_ticks = (after.ds_Minute - before.ds_Minute) * 50 * 60
-                      + (after.ds_Tick - before.ds_Tick);
-        tap_ok(rc == 0 && elapsed_ticks >= 25 && elapsed_ticks <= 100,
-               "ws_timeout_expires - 1s timeout with no activity");
-        tap_diagf("  elapsed: %ld ticks (%ld.%02ld s), return: %d",
-                  (long)elapsed_ticks,
-                  (long)(elapsed_ticks / 50),
-                  (long)((elapsed_ticks % 50) * 2),
+        timer_now(&ts_after);
+        elapsed_ms = (LONG)timer_elapsed_ms(&ts_before, &ts_after);
+        tap_ok(rc == 0 && elapsed_ms >= 500 && elapsed_ms <= 2000,
+               "WaitSelect(): timeout fires when idle [AmiTCP]");
+        tap_diagf("  elapsed: %ldms (%ld.%03ld s), return: %d",
+                  (long)elapsed_ms,
+                  (long)(elapsed_ms / 1000),
+                  (long)(elapsed_ms % 1000),
                   rc);
     } else {
-        tap_ok(0, "ws_timeout_expires - could not establish connection");
+        tap_ok(0, "WaitSelect(): timeout fires when idle [AmiTCP]");
+        tap_diagf("  listener=%ld client=%ld server=%ld errno=%ld",
+                  (long)listener, (long)client, (long)server,
+                  (long)get_bsd_errno());
     }
     safe_close(server);
     safe_close(client);
@@ -147,7 +147,7 @@ void run_waitselect_tests(void)
 
     CHECK_CTRLC();
 
-    /* 74. ws_null_timeout */
+    /* 62. ws_null_timeout */
     port = get_test_port(64);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -157,9 +157,9 @@ void run_waitselect_tests(void)
         FD_SET(listener, &readfds);
         rc = WaitSelect(listener + 1, &readfds, NULL, NULL, NULL, NULL);
         tap_ok(rc >= 1 && FD_ISSET(listener, &readfds),
-               "ws_null_timeout - NULL timeout returns on pending connection");
+               "WaitSelect(): NULL timeout blocks until activity [AmiTCP]");
     } else {
-        tap_ok(0, "ws_null_timeout - could not create listener/client");
+        tap_ok(0, "WaitSelect(): NULL timeout blocks until activity [AmiTCP]");
     }
     /* Accept to clean up the pending connection */
     if (listener >= 0) {
@@ -173,26 +173,25 @@ void run_waitselect_tests(void)
 
     /* ---- Pure delay ---- */
 
-    /* 75. ws_null_fdsets */
+    /* 63. ws_null_fdsets */
     tv.tv_secs = 0;
     tv.tv_micro = 250000;
-    DateStamp(&before);
+    timer_now(&ts_before);
     rc = WaitSelect(0, NULL, NULL, NULL, &tv, NULL);
-    DateStamp(&after);
-    elapsed_ticks = (after.ds_Minute - before.ds_Minute) * 50 * 60
-                  + (after.ds_Tick - before.ds_Tick);
-    tap_ok(rc == 0 && elapsed_ticks >= 5 && elapsed_ticks <= 30,
-           "ws_null_fdsets - pure delay with no fds (~0.25s)");
-    tap_diagf("  elapsed: %ld ticks (%ld.%02ld s)",
-              (long)elapsed_ticks,
-              (long)(elapsed_ticks / 50),
-              (long)((elapsed_ticks % 50) * 2));
+    timer_now(&ts_after);
+    elapsed_ms = (LONG)timer_elapsed_ms(&ts_before, &ts_after);
+    tap_ok(rc == 0 && elapsed_ms >= 100 && elapsed_ms <= 600,
+           "WaitSelect(): all NULL fdsets + timeout = delay [AmiTCP]");
+    tap_diagf("  elapsed: %ldms (%ld.%03ld s)",
+              (long)elapsed_ms,
+              (long)(elapsed_ms / 1000),
+              (long)(elapsed_ms % 1000));
 
     CHECK_CTRLC();
 
     /* ---- Exception fd ---- */
 
-    /* 76. ws_exceptfds_oob */
+    /* 64. ws_exceptfds_oob */
     port = get_test_port(65);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -201,7 +200,7 @@ void run_waitselect_tests(void)
         buf[0] = 0xAB;
         rc = send(client, (UBYTE *)buf, 1, MSG_OOB);
         if (rc < 0) {
-            tap_skip("ws_exceptfds_oob - MSG_OOB not supported");
+            tap_skip("MSG_OOB not supported");
         } else {
             FD_ZERO(&exceptfds);
             FD_SET(server, &exceptfds);
@@ -209,18 +208,16 @@ void run_waitselect_tests(void)
             tv.tv_micro = 0;
             rc = WaitSelect(server + 1, NULL, NULL, &exceptfds, &tv, NULL);
             if (rc >= 1 && FD_ISSET(server, &exceptfds)) {
-                tap_ok(1, "ws_exceptfds_oob - OOB detected via exceptfds");
+                tap_ok(1, "WaitSelect(): exceptfds detects OOB data [AmiTCP]");
             } else if (rc == 0) {
-                tap_todo_start("OOB not detected via exceptfds");
-                tap_ok(0, "ws_exceptfds_oob - OOB detected via exceptfds");
-                tap_todo_end();
+                tap_ok(0, "WaitSelect(): exceptfds detects OOB data [AmiTCP]");
             } else {
-                tap_ok(0, "ws_exceptfds_oob - unexpected WaitSelect result");
+                tap_ok(0, "WaitSelect(): exceptfds detects OOB data [AmiTCP]");
                 tap_diagf("  rc=%d, errno=%ld", rc, (long)get_bsd_errno());
             }
         }
     } else {
-        tap_ok(0, "ws_exceptfds_oob - could not establish connection");
+        tap_ok(0, "WaitSelect(): exceptfds detects OOB data [AmiTCP]");
     }
     safe_close(server);
     safe_close(client);
@@ -230,7 +227,7 @@ void run_waitselect_tests(void)
 
     /* ---- Multiple file descriptors ---- */
 
-    /* 77. ws_multiple_fds */
+    /* 65. ws_multiple_fds */
     for (i = 0; i < 3; i++) {
         list3[i] = cli3[i] = srv3[i] = -1;
     }
@@ -263,10 +260,10 @@ void run_waitselect_tests(void)
                 ready_count++;
         }
         tap_ok(rc >= 1 && ready_count == 3,
-               "ws_multiple_fds - all 3 sockets report readable");
+               "WaitSelect(): multiple sockets in readfds [AmiTCP]");
         tap_diagf("  return: %d, ready: %d of 3", rc, ready_count);
     } else {
-        tap_ok(0, "ws_multiple_fds - could not establish all 3 connections");
+        tap_ok(0, "WaitSelect(): multiple sockets in readfds [AmiTCP]");
     }
     close_all(srv3, 3);
     close_all(cli3, 3);
@@ -276,7 +273,7 @@ void run_waitselect_tests(void)
 
     /* ---- Signal interaction ---- */
 
-    /* 78. ws_signal_interrupt */
+    /* 66. ws_signal_interrupt */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         port = get_test_port(69);
@@ -291,24 +288,24 @@ void run_waitselect_tests(void)
             tap_ok(rc == 0 &&
                    !FD_ISSET(listener, &readfds) &&
                    (sigmask & (1UL << sigbit)),
-                   "ws_signal_interrupt - signal interrupts WaitSelect");
+                   "WaitSelect(): Amiga signal interruption [AmiTCP]");
             tap_diagf("  rc=%d, fd_isset=%d, sigmask=0x%08lx",
                       rc,
                       (int)FD_ISSET(listener, &readfds),
                       (unsigned long)sigmask);
         } else {
-            tap_ok(0, "ws_signal_interrupt - could not create listener");
+            tap_ok(0, "WaitSelect(): Amiga signal interruption [AmiTCP]");
         }
         safe_close(listener);
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("ws_signal_interrupt - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 79. ws_sigmask_passthrough */
+    /* 67. ws_sigmask_passthrough */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         port = get_test_port(70);
@@ -325,7 +322,7 @@ void run_waitselect_tests(void)
             tv.tv_micro = 0;
             rc = WaitSelect(server + 1, &readfds, NULL, NULL, &tv, &sigmask);
             tap_ok(rc >= 1 && FD_ISSET(server, &readfds),
-                   "ws_sigmask_passthrough - sigmask does not interfere with fd readiness");
+                   "WaitSelect(): signal mask passthrough [AmiTCP]");
             if (sigmask == 0)
                 tap_diag("  sigmask cleared (replaced by received signals = none)");
             else
@@ -333,21 +330,21 @@ void run_waitselect_tests(void)
             tap_diagf("  rc=%d, sigmask=0x%08lx",
                       rc, (unsigned long)sigmask);
         } else {
-            tap_ok(0, "ws_sigmask_passthrough - could not establish connection");
+            tap_ok(0, "WaitSelect(): signal mask passthrough [AmiTCP]");
         }
         safe_close(server);
         safe_close(client);
         safe_close(listener);
         free_signal(sigbit);
     } else {
-        tap_skip("ws_sigmask_passthrough - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
     /* ---- Edge cases ---- */
 
-    /* 80. ws_invalid_fd */
+    /* 68. ws_invalid_fd */
     client = make_tcp_socket();
     if (client >= 0) {
         closed_fd = client;
@@ -359,19 +356,19 @@ void run_waitselect_tests(void)
         tv.tv_micro = 0;
         rc = WaitSelect(closed_fd + 1, &readfds, NULL, NULL, &tv, NULL);
         if (rc == -1 && get_bsd_errno() == EBADF) {
-            tap_ok(1, "ws_invalid_fd - EBADF on closed fd");
+            tap_ok(1, "WaitSelect(): invalid descriptor handling [AmiTCP]");
         } else {
-            tap_ok(1, "ws_invalid_fd - closed fd behavior documented");
+            tap_ok(1, "WaitSelect(): invalid descriptor handling [AmiTCP]");
             tap_diagf("  rc=%d, errno=%ld (EBADF=%d)",
                       rc, (long)get_bsd_errno(), EBADF);
         }
     } else {
-        tap_ok(0, "ws_invalid_fd - could not create socket");
+        tap_ok(0, "WaitSelect(): invalid descriptor handling [AmiTCP]");
     }
 
     CHECK_CTRLC();
 
-    /* 81. ws_nfds_boundary */
+    /* 69. ws_nfds_boundary */
     port = get_test_port(71);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -405,11 +402,11 @@ void run_waitselect_tests(void)
         result_b = WaitSelect(server, &readfds, NULL, NULL, &tv, NULL);
 
         tap_ok(result_a >= 1 && result_b == 0,
-               "ws_nfds_boundary - correct nfds detects, low nfds misses");
+               "WaitSelect(): nfds = highest_fd + 1 [AmiTCP]");
         tap_diagf("  result_a (nfds=%ld+1): %d, result_b (nfds=%ld): %d",
                   (long)server, result_a, (long)server, result_b);
     } else {
-        tap_ok(0, "ws_nfds_boundary - could not establish connection");
+        tap_ok(0, "WaitSelect(): nfds = highest_fd + 1 [AmiTCP]");
     }
     safe_close(server);
     safe_close(client);
@@ -417,7 +414,7 @@ void run_waitselect_tests(void)
 
     CHECK_CTRLC();
 
-    /* 82. ws_many_descriptors */
+    /* 70. ws_many_descriptors */
     dtsize = 0;
     SocketBaseTags(SBTM_GETREF(SBTC_DTABLESIZE), (ULONG)&dtsize, TAG_DONE);
     if (dtsize < 66) {
@@ -437,10 +434,10 @@ void run_waitselect_tests(void)
         tv.tv_micro = 0;
         rc = WaitSelect(fds[64] + 1, &readfds, NULL, NULL, &tv, NULL);
         tap_ok(rc == 0,
-               "ws_many_descriptors - WaitSelect with fd > 64 does not crash");
+               "WaitSelect(): >64 descriptors [AmiTCP]");
         tap_diagf("  highest fd: %ld, return: %d", (long)fds[64], rc);
     } else {
-        tap_skip("ws_many_descriptors - could not open 65 sockets");
+        tap_skip("could not open 65 sockets");
         tap_diagf("  opened %d before failure", i);
     }
     close_all(fds, 65);
@@ -453,7 +450,7 @@ void run_waitselect_tests(void)
 
     /* ---- Async connect and peer close ---- */
 
-    /* 83. ws_connect_ready */
+    /* 71. ws_connect_ready */
     port = get_test_port(72);
     listener = make_loopback_listener(port);
     if (listener >= 0) {
@@ -466,7 +463,7 @@ void run_waitselect_tests(void)
             addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
             rc = connect(client, (struct sockaddr *)&addr, sizeof(addr));
             if (rc == 0) {
-                tap_ok(1, "ws_connect_ready - connect completed immediately");
+                tap_ok(1, "WaitSelect(): non-blocking connect completion [AmiTCP]");
                 tap_diag("  non-blocking connect returned 0 on loopback");
             } else if (rc < 0 && get_bsd_errno() == EINPROGRESS) {
                 FD_ZERO(&writefds);
@@ -479,13 +476,13 @@ void run_waitselect_tests(void)
                     optlen = sizeof(optval);
                     getsockopt(client, SOL_SOCKET, SO_ERROR, &optval, &optlen);
                     tap_ok(optval == 0,
-                           "ws_connect_ready - WaitSelect detects connect completion");
+                           "WaitSelect(): non-blocking connect completion [AmiTCP]");
                     tap_diagf("  SO_ERROR: %ld", (long)optval);
                 } else {
-                    tap_ok(0, "ws_connect_ready - WaitSelect timeout on connect");
+                    tap_ok(0, "WaitSelect(): non-blocking connect completion [AmiTCP]");
                 }
             } else {
-                tap_ok(0, "ws_connect_ready - unexpected connect error");
+                tap_ok(0, "WaitSelect(): non-blocking connect completion [AmiTCP]");
                 tap_diagf("  errno: %ld", (long)get_bsd_errno());
             }
             /* Accept any pending connection */
@@ -493,16 +490,16 @@ void run_waitselect_tests(void)
             safe_close(server);
             safe_close(client);
         } else {
-            tap_ok(0, "ws_connect_ready - could not create socket");
+            tap_ok(0, "WaitSelect(): non-blocking connect completion [AmiTCP]");
         }
     } else {
-        tap_ok(0, "ws_connect_ready - could not create listener");
+        tap_ok(0, "WaitSelect(): non-blocking connect completion [AmiTCP]");
     }
     safe_close(listener);
 
     CHECK_CTRLC();
 
-    /* 84. ws_peer_close */
+    /* 72. ws_peer_close */
     port = get_test_port(73);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -518,16 +515,16 @@ void run_waitselect_tests(void)
         if (rc >= 1 && FD_ISSET(client, &readfds)) {
             rc = recv(client, (UBYTE *)buf, sizeof(buf), 0);
             tap_ok(rc == 0,
-                   "ws_peer_close - WaitSelect detects readable, recv returns EOF");
+                   "WaitSelect(): readable after peer close (EOF) [AmiTCP]");
             if (rc != 0)
                 tap_diagf("  recv returned %d, errno=%ld",
                           rc, (long)get_bsd_errno());
         } else {
-            tap_ok(0, "ws_peer_close - WaitSelect did not detect peer close");
+            tap_ok(0, "WaitSelect(): readable after peer close (EOF) [AmiTCP]");
             tap_diagf("  rc=%d", rc);
         }
     } else {
-        tap_ok(0, "ws_peer_close - could not establish connection");
+        tap_ok(0, "WaitSelect(): readable after peer close (EOF) [AmiTCP]");
     }
     safe_close(server);
     safe_close(client);

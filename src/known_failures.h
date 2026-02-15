@@ -1,0 +1,26 @@
+/*
+ * bsdsocktest — Known failure detection per TCP/IP stack
+ *
+ * Auto-detects the running stack from SBTC_RELEASESTRPTR and looks up
+ * known test failures. Tests report pass/fail normally; the framework
+ * marks matching failures as "known" rather than "unexpected".
+ */
+
+#ifndef KNOWN_FAILURES_H
+#define KNOWN_FAILURES_H
+
+/* Initialize known-failures table from the detected stack version string.
+ * Call once after opening bsdsocket.library, before running any tests.
+ * version_string: the SBTC_RELEASESTRPTR value (e.g. "Roadshow 4.364").
+ * If the stack is not recognized, no failures are marked as known. */
+void known_init(const char *version_string);
+
+/* Check if a given test number is a known failure for the current stack.
+ * Returns the reason string if known, NULL if not. */
+const char *known_check(int test_number);
+
+/* Get the detected stack name (e.g. "Roadshow"), or "Unknown" if
+ * not recognized. For display purposes. */
+const char *known_stack_name(void);
+
+#endif /* KNOWN_FAILURES_H */

@@ -4,7 +4,7 @@
  * Tests: send, recv, sendto, recvfrom, sendmsg, recvmsg,
  *        MSG_PEEK, MSG_OOB, non-blocking behavior.
  *
- * 19 tests, port offsets 20-39 (loopback) and 160-179 (network).
+ * 19 tests (24-42), port offsets 20-39 (loopback) and 160-179 (network).
  */
 
 #include "tap.h"
@@ -12,7 +12,6 @@
 #include "helper_proto.h"
 
 #include <proto/bsdsocket.h>
-#include <proto/dos.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -45,9 +44,9 @@ void run_sendrecv_tests(void)
         rc = recv(server, (UBYTE *)rbuf, sizeof(rbuf), 0);
         mismatch = verify_test_pattern(rbuf, 100, 1);
         tap_ok(rc == 100 && mismatch == 0,
-               "sendrecv_basic_100 - 100 byte send/recv matches");
+               "send()/recv(): 100-byte TCP transfer [BSD 4.4]");
     } else {
-        tap_ok(0, "sendrecv_basic_100 - could not establish connection");
+        tap_ok(0, "send()/recv(): 100-byte TCP transfer [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -74,11 +73,11 @@ void run_sendrecv_tests(void)
         }
         mismatch = verify_test_pattern(rbuf, 8192, 2);
         tap_ok(total == 8192 && mismatch == 0,
-               "sendrecv_large_8192 - 8KB send/recv matches");
+               "send()/recv(): 8192-byte TCP transfer (multi-recv) [BSD 4.4]");
         if (total != 8192)
             tap_diagf("  received %d of 8192 bytes", total);
     } else {
-        tap_ok(0, "sendrecv_large_8192 - could not establish connection");
+        tap_ok(0, "send()/recv(): 8192-byte TCP transfer (multi-recv) [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -106,12 +105,12 @@ void run_sendrecv_tests(void)
             rc = recv(server, (UBYTE *)rbuf, sizeof(rbuf), 0);
             mismatch = verify_test_pattern(rbuf, 50, 3);
             tap_ok(rc == 50 && mismatch == 0,
-                   "recv_msg_peek - peek then consume both return correct data");
+                   "recv(MSG_PEEK): read without consuming [BSD 4.4]");
         } else {
-            tap_ok(0, "recv_msg_peek - MSG_PEEK did not return expected data");
+            tap_ok(0, "recv(MSG_PEEK): read without consuming [BSD 4.4]");
         }
     } else {
-        tap_ok(0, "recv_msg_peek - could not establish connection");
+        tap_ok(0, "recv(MSG_PEEK): read without consuming [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -130,27 +129,22 @@ void run_sendrecv_tests(void)
         sbuf[0] = 0xAB;
         rc = send(client, (UBYTE *)sbuf, 1, MSG_OOB);
         if (rc < 0) {
-            tap_skip("sendrecv_msg_oob - MSG_OOB send not supported");
+            tap_skip("MSG_OOB send not supported");
         } else {
             set_recv_timeout(server, 2);
             rbuf[0] = 0;
             rc = recv(server, (UBYTE *)rbuf, 1, MSG_OOB);
             if (rc == 1 && rbuf[0] == 0xAB) {
-                tap_ok(1, "sendrecv_msg_oob - OOB byte sent and received");
+                tap_ok(1, "recv(MSG_OOB): urgent data delivery [BSD 4.4]");
             } else {
-                /* OOB data handling varies widely across TCP stacks.
-                 * Many require SO_OOBINLINE or SIGURG/exceptfds before
-                 * recv(MSG_OOB) returns the urgent byte. */
-                tap_todo_start("OOB recv behavior varies across stacks");
-                tap_ok(0, "sendrecv_msg_oob - OOB byte sent and received");
+                tap_ok(0, "recv(MSG_OOB): urgent data delivery [BSD 4.4]");
                 tap_diagf("  recv(MSG_OOB): rc=%d byte=0x%02x errno=%ld",
                           rc, (int)(unsigned char)rbuf[0],
                           (long)get_bsd_errno());
-                tap_todo_end();
             }
         }
     } else {
-        tap_ok(0, "sendrecv_msg_oob - could not establish connection");
+        tap_ok(0, "recv(MSG_OOB): urgent data delivery [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -184,9 +178,9 @@ void run_sendrecv_tests(void)
         mismatch = verify_test_pattern(rbuf, 100, 3);
         tap_ok(rc == 100 && mismatch == 0 &&
                from_addr.sin_addr.s_addr == htonl(INADDR_LOOPBACK),
-               "udp_sendto_recvfrom - UDP loopback data and source correct");
+               "sendto()/recvfrom(): UDP datagram loopback [RFC 768]");
     } else {
-        tap_ok(0, "udp_sendto_recvfrom - could not create UDP sockets");
+        tap_ok(0, "sendto()/recvfrom(): UDP datagram loopback [RFC 768]");
     }
     safe_close(fd_a);
     safe_close(fd_b);
@@ -219,9 +213,9 @@ void run_sendrecv_tests(void)
                       (struct sockaddr *)&from_addr, &addrlen);
         mismatch = verify_test_pattern(rbuf, 100, 4);
         tap_ok(rc == 100 && mismatch == 0,
-               "udp_sendto_after_prior_ops - correct socket dispatch after fd reuse");
+               "sendto(): correct dispatch after prior socket ops [BSD 4.4]");
     } else {
-        tap_ok(0, "udp_sendto_after_prior_ops - could not create sockets");
+        tap_ok(0, "sendto(): correct dispatch after prior socket ops [BSD 4.4]");
     }
     safe_close(fd_a);
     safe_close(fd_b);
@@ -251,9 +245,9 @@ void run_sendrecv_tests(void)
                       (struct sockaddr *)&from_addr, &addrlen);
         mismatch = verify_test_pattern(rbuf, 100, 5);
         tap_ok(rc == 100 && mismatch == 0,
-               "udp_sendto_basic_second - second UDP round-trip correct");
+               "sendto(): on independently created socket [BSD 4.4]");
     } else {
-        tap_ok(0, "udp_sendto_basic_second - could not create sockets");
+        tap_ok(0, "sendto(): on independently created socket [BSD 4.4]");
     }
     safe_close(fd_a);
     safe_close(fd_b);
@@ -287,12 +281,12 @@ void run_sendrecv_tests(void)
             rc = recvmsg(server, &msg, 0);
             mismatch = verify_test_pattern(rbuf, 100, 6);
             tap_ok(rc == 100 && mismatch == 0,
-                   "sendmsg_recvmsg_single - single iovec send/recv");
+                   "sendmsg()/recvmsg(): single iovec [BSD 4.4]");
         } else {
-            tap_ok(0, "sendmsg_recvmsg_single - sendmsg failed");
+            tap_ok(0, "sendmsg()/recvmsg(): single iovec [BSD 4.4]");
         }
     } else {
-        tap_ok(0, "sendmsg_recvmsg_single - could not establish connection");
+        tap_ok(0, "sendmsg()/recvmsg(): single iovec [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -337,13 +331,13 @@ void run_sendrecv_tests(void)
             rc = recvmsg(server, &msg, 0);
             mismatch = verify_test_pattern(rbuf, 100, 7);
             tap_ok(rc == 100 && mismatch == 0,
-                   "sendmsg_recvmsg_scatter - scatter/gather 3 iovecs");
+                   "sendmsg()/recvmsg(): scatter-gather (multiple iovecs) [BSD 4.4]");
         } else {
-            tap_ok(0, "sendmsg_recvmsg_scatter - sendmsg failed");
+            tap_ok(0, "sendmsg()/recvmsg(): scatter-gather (multiple iovecs) [BSD 4.4]");
             tap_diagf("  sendmsg returned %d", rc);
         }
     } else {
-        tap_ok(0, "sendmsg_recvmsg_scatter - could not establish connection");
+        tap_ok(0, "sendmsg()/recvmsg(): scatter-gather (multiple iovecs) [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -363,9 +357,9 @@ void run_sendrecv_tests(void)
         rc = recv(server, (UBYTE *)rbuf, sizeof(rbuf), 0);
         tap_ok(rc < 0 && (get_bsd_errno() == EWOULDBLOCK ||
                            get_bsd_errno() == EAGAIN),
-               "recv_nonblocking_ewouldblock - non-blocking recv with no data");
+               "recv(): EWOULDBLOCK on empty non-blocking socket [BSD 4.4]");
     } else {
-        tap_ok(0, "recv_nonblocking_ewouldblock - could not establish connection");
+        tap_ok(0, "recv(): EWOULDBLOCK on empty non-blocking socket [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -391,13 +385,13 @@ void run_sendrecv_tests(void)
         }
         if (rc < 0 && (get_bsd_errno() == EWOULDBLOCK ||
                         get_bsd_errno() == EAGAIN)) {
-            tap_ok(1, "send_nonblocking_ewouldblock - EWOULDBLOCK after buffer full");
+            tap_ok(1, "send(): EWOULDBLOCK when buffer full [BSD 4.4]");
             tap_diagf("  sent %d bytes before EWOULDBLOCK", total);
         } else {
-            tap_skip("send_nonblocking_ewouldblock - send buffer never filled (>1MB)");
+            tap_skip("send buffer never filled (>1MB)");
         }
     } else {
-        tap_ok(0, "send_nonblocking_ewouldblock - could not establish connection");
+        tap_ok(0, "send(): EWOULDBLOCK when buffer full [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -422,7 +416,8 @@ void run_sendrecv_tests(void)
          * so there is no endpoint left to generate a RST.  On a real
          * network the remote kernel would RST, but on loopback the data
          * may simply be discarded.  Try multiple sends to give the stack
-         * every chance, but mark as TODO if it never errors. */
+         * every chance; if it never errors, the known-failures system
+         * handles the expected failure for stacks that behave this way. */
         fill_test_pattern(sbuf, 100, 9);
         passed = 0;
         for (attempts = 0; attempts < 5; attempts++) {
@@ -442,18 +437,16 @@ void run_sendrecv_tests(void)
             }
         }
         if (passed) {
-            tap_ok(1, "send_after_peer_close - send to closed peer fails");
+            tap_ok(1, "send(): error after peer closes connection [BSD 4.4]");
             tap_diagf("  errno: %ld (after %d attempt(s))",
                       (long)get_bsd_errno(), attempts + 1);
         } else {
-            tap_todo_start("loopback may not generate RST for closed peer");
-            tap_ok(0, "send_after_peer_close - send to closed peer fails");
+            tap_ok(0, "send(): error after peer closes connection [BSD 4.4]");
             tap_diagf("  %d attempts without error, last errno: %ld",
                       attempts, (long)get_bsd_errno());
-            tap_todo_end();
         }
     } else {
-        tap_ok(0, "send_after_peer_close - could not establish connection");
+        tap_ok(0, "send(): error after peer closes connection [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -473,7 +466,7 @@ void run_sendrecv_tests(void)
         fill_test_pattern(sbuf, 200, 10);
         rc = send(client, (UBYTE *)sbuf, 200, 0);
         if (rc != 200) {
-            tap_ok(0, "sendrecv_bidirectional - client send failed");
+            tap_ok(0, "send()/recv(): simultaneous bidirectional transfer [BSD 4.4]");
             tap_diagf("  send(client): rc=%d errno=%ld",
                       rc, (long)get_bsd_errno());
         } else {
@@ -481,7 +474,7 @@ void run_sendrecv_tests(void)
             fill_test_pattern(sbuf, 200, 11);
             rc = send(server, (UBYTE *)sbuf, 200, 0);
             if (rc != 200) {
-                tap_ok(0, "sendrecv_bidirectional - server send failed");
+                tap_ok(0, "send()/recv(): simultaneous bidirectional transfer [BSD 4.4]");
                 tap_diagf("  send(server): rc=%d errno=%ld",
                           rc, (long)get_bsd_errno());
             } else {
@@ -507,19 +500,19 @@ void run_sendrecv_tests(void)
                     }
                     mismatch = verify_test_pattern(rbuf, 200, 11);
                     tap_ok(total == 200 && mismatch == 0,
-                           "sendrecv_bidirectional - both directions match");
+                           "send()/recv(): simultaneous bidirectional transfer [BSD 4.4]");
                     if (total != 200 || mismatch != 0)
                         tap_diagf("  client recv: total=%d mismatch=%d errno=%ld",
                                   total, mismatch, (long)get_bsd_errno());
                 } else {
-                    tap_ok(0, "sendrecv_bidirectional - server recv failed");
+                    tap_ok(0, "send()/recv(): simultaneous bidirectional transfer [BSD 4.4]");
                     tap_diagf("  server recv: total=%d mismatch=%d errno=%ld",
                               total, mismatch, (long)get_bsd_errno());
                 }
             }
         }
     } else {
-        tap_ok(0, "sendrecv_bidirectional - could not establish connection");
+        tap_ok(0, "send()/recv(): simultaneous bidirectional transfer [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -545,9 +538,9 @@ void run_sendrecv_tests(void)
         rc = recv(server, (UBYTE *)rbuf, sizeof(rbuf), 0);
         mismatch = verify_test_pattern(rbuf, 10, 12);
         tap_ok(rc == 10 && mismatch == 0,
-               "recv_zero_length - zero-length recv does not consume data");
+               "recv(): behavior with zero-length buffer [BSD 4.4]");
     } else {
-        tap_ok(0, "recv_zero_length - could not establish connection");
+        tap_ok(0, "recv(): behavior with zero-length buffer [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -570,9 +563,9 @@ void run_sendrecv_tests(void)
         rc = recv(server, (UBYTE *)rbuf, sizeof(rbuf), 0);
         mismatch = verify_test_pattern(rbuf, 10, 13);
         tap_ok(rc == 10 && mismatch == 0,
-               "send_zero_bytes - connection works after zero-length send");
+               "send(): zero-length send [BSD 4.4]");
     } else {
-        tap_ok(0, "send_zero_bytes - could not establish connection");
+        tap_ok(0, "send(): zero-length send [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -583,17 +576,17 @@ void run_sendrecv_tests(void)
     /* ==== Network send/recv tests — require host helper ==== */
 
     if (!helper_is_connected()) {
-        tap_skip("tcp_network_64k - host helper not connected");
+        tap_skip("host helper not connected");
         CHECK_CTRLC();
-        tap_skip("udp_network_datagram - host helper not connected");
+        tap_skip("host helper not connected");
         CHECK_CTRLC();
-        tap_skip("accept_external - host helper not connected");
+        tap_skip("host helper not connected");
         CHECK_CTRLC();
-        tap_skip("tcp_network_large - host helper not connected");
+        tap_skip("host helper not connected");
         return;
     }
 
-    /* 123. tcp_network_64k */
+    /* 39. tcp_network_64k */
     {
         LONG fd;
         LONG total_sent, total_recv, verified_bytes;
@@ -635,19 +628,19 @@ void run_sendrecv_tests(void)
             }
 
             tap_ok(verified_bytes >= 65536,
-                   "tcp_network_64k - 64KB echo integrity through network");
+                   "send()/recv(): 64KB TCP integrity via network [BSD 4.4]");
             tap_diagf("  sent=%ld recv=%ld verified=%ld",
                       (long)total_sent, (long)total_recv,
                       (long)verified_bytes);
             safe_close(fd);
         } else {
-            tap_ok(0, "tcp_network_64k - could not connect to echo server");
+            tap_ok(0, "send()/recv(): 64KB TCP integrity via network [BSD 4.4]");
         }
     }
 
     CHECK_CTRLC();
 
-    /* 124. udp_network_datagram */
+    /* 40. udp_network_datagram */
     {
         LONG fd;
         struct sockaddr_in echo_addr;
@@ -673,27 +666,27 @@ void run_sendrecv_tests(void)
                 if (n == 512) {
                     mismatch = verify_test_pattern(rbuf, 512, 0x55);
                     tap_ok(mismatch == 0,
-                           "udp_network_datagram - 512B UDP echo matches");
+                           "sendto()/recvfrom(): UDP datagram via network [RFC 768]");
                     tap_diagf("  sent=512 recv=%ld", (long)n);
                 } else {
-                    tap_ok(0, "udp_network_datagram - recv failed or wrong size");
+                    tap_ok(0, "sendto()/recvfrom(): UDP datagram via network [RFC 768]");
                     tap_diagf("  recv=%ld errno=%ld",
                               (long)n, (long)get_bsd_errno());
                 }
             } else {
-                tap_ok(0, "udp_network_datagram - sendto failed");
+                tap_ok(0, "sendto()/recvfrom(): UDP datagram via network [RFC 768]");
                 tap_diagf("  sendto=%ld errno=%ld",
                           (long)n, (long)get_bsd_errno());
             }
             safe_close(fd);
         } else {
-            tap_ok(0, "udp_network_datagram - could not create UDP socket");
+            tap_ok(0, "sendto()/recvfrom(): UDP datagram via network [RFC 768]");
         }
     }
 
     CHECK_CTRLC();
 
-    /* 125. accept_external */
+    /* 41. accept_external */
     {
         LONG ext_listener, accepted;
         struct sockaddr_in bind_addr;
@@ -737,42 +730,42 @@ void run_sendrecv_tests(void)
                                memcmp(rbuf,
                                       "BSDSOCKTEST HELLO FROM HELPER\n",
                                       30) == 0,
-                               "accept_external - accepted connection from helper");
+                               "accept(): incoming connection from remote host [BSD 4.4]");
                         if (total != 30)
                             tap_diagf("  received %d of 30 bytes", total);
                         safe_close(accepted);
                     } else {
-                        tap_ok(0, "accept_external - accept failed");
+                        tap_ok(0, "accept(): incoming connection from remote host [BSD 4.4]");
                     }
                 } else {
-                    tap_ok(0, "accept_external - no incoming connection within 5s");
+                    tap_ok(0, "accept(): incoming connection from remote host [BSD 4.4]");
                 }
             } else {
-                tap_ok(0, "accept_external - helper declined CONNECT");
+                tap_ok(0, "accept(): incoming connection from remote host [BSD 4.4]");
             }
             safe_close(ext_listener);
         } else {
-            tap_ok(0, "accept_external - could not create listener");
+            tap_ok(0, "accept(): incoming connection from remote host [BSD 4.4]");
         }
     }
 
     CHECK_CTRLC();
 
-    /* 126. tcp_network_large */
+    /* 42. tcp_network_large */
     {
         LONG fd;
         LONG total_sent, total_recv, verified_bytes;
         int recv_offset, i;
         LONG n;
-        struct DateStamp ds_before, ds_after;
-        LONG elapsed_ticks, elapsed_ms, kbps;
+        struct bst_timestamp ts_before, ts_after;
+        LONG elapsed_ms, kbps;
 
         fd = helper_connect_service(HELPER_TCP_ECHO);
         if (fd >= 0) {
             set_recv_timeout(fd, 30);
             fill_test_pattern(sbuf, 8192, 0);
 
-            DateStamp(&ds_before);
+            timer_now(&ts_before);
 
             /* Send 256KB (32 x 8KB) */
             total_sent = 0;
@@ -803,23 +796,21 @@ void run_sendrecv_tests(void)
                     verified_bytes += recv_offset;
             }
 
-            DateStamp(&ds_after);
-            elapsed_ticks = (ds_after.ds_Days - ds_before.ds_Days) * 24L * 60 * 50 * 60
-                          + (ds_after.ds_Minute - ds_before.ds_Minute) * 50L * 60
-                          + (ds_after.ds_Tick - ds_before.ds_Tick);
-            elapsed_ms = elapsed_ticks * 20;
+            timer_now(&ts_after);
+            elapsed_ms = (LONG)timer_elapsed_ms(&ts_before, &ts_after);
             kbps = (elapsed_ms > 0)
                  ? (verified_bytes / 1024L) * 1000L / elapsed_ms
                  : 0;
 
             tap_ok(verified_bytes >= 262144,
-                   "tcp_network_large - 256KB echo integrity through network");
+                   "send()/recv(): 256KB+ TCP integrity via network [BSD 4.4]");
             tap_diagf("  sent=%ld recv=%ld verified=%ld ms=%ld KB/s=%ld",
                       (long)total_sent, (long)total_recv,
                       (long)verified_bytes, (long)elapsed_ms, (long)kbps);
+            tap_notef("Network 256KB echo: %ld KB/s", (long)kbps);
             safe_close(fd);
         } else {
-            tap_ok(0, "tcp_network_large - could not connect to echo server");
+            tap_ok(0, "send()/recv(): 256KB+ TCP integrity via network [BSD 4.4]");
         }
     }
 }

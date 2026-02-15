@@ -8,9 +8,12 @@
 #include "testutil.h"
 #include "tests.h"
 #include "helper_proto.h"
+#include "known_failures.h"
 
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <proto/icon.h>
+#include <workbench/startup.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -19,8 +22,17 @@
  * libnix startup code checks this and expands the stack if needed. */
 unsigned long __stack = 65536;
 
+/* Override libnix default CON: window for Workbench launches.
+ * libnix opens this window before main() when argc==0.
+ * Overrides the default "CON://///AUTO/CLOSE/WAIT" from libnix.
+ * This is compile-time; WBTOOL icons cannot change it via Tool Types. */
+const char *__stdiowin = "CON:0/20/640/180/bsdsocktest/AUTO/CLOSE/WAIT";
+
+/* icon.library base — needed by proto/icon.h inline stubs */
+struct Library *IconBase = NULL;
+
 /* ReadArgs template */
-#define TEMPLATE "CATEGORY/K,HOST/K,PORT/N,LOG/K,ALL/S,LOOPBACK/S,NETWORK/S,LIST/S,VERBOSE/S"
+#define TEMPLATE "CATEGORY/K,HOST/K,PORT/N,LOG/K,ALL/S,LOOPBACK/S,NETWORK/S,LIST/S,VERBOSE/S,NOPAGE/S"
 
 enum {
     ARG_CATEGORY,
@@ -32,6 +44,7 @@ enum {
     ARG_NETWORK,
     ARG_LIST,
     ARG_VERBOSE,
+    ARG_NOPAGE,
     ARG_COUNT
 };
 
@@ -45,38 +58,52 @@ struct test_category {
     const char *name;
     void (*run)(void);
     int tier;
+    const char *description;
 };
 
 /* Category table — order matches test file structure */
 static const struct test_category categories[] = {
-    { "socket",     run_socket_tests,     TIER_LOOPBACK },
-    { "sendrecv",   run_sendrecv_tests,   TIER_BOTH     },
-    { "sockopt",    run_sockopt_tests,    TIER_LOOPBACK },
-    { "waitselect", run_waitselect_tests, TIER_LOOPBACK },
-    { "signals",    run_signals_tests,    TIER_LOOPBACK },
-    { "dns",        run_dns_tests,        TIER_BOTH     },
-    { "utility",    run_utility_tests,    TIER_LOOPBACK },
-    { "transfer",   run_transfer_tests,   TIER_LOOPBACK },
-    { "errno",      run_errno_tests,      TIER_LOOPBACK },
-    { "misc",       run_misc_tests,       TIER_LOOPBACK },
-    { "icmp",       run_icmp_tests,       TIER_BOTH     },
-    { "throughput", run_throughput_tests,  TIER_BOTH     },
-    { NULL, NULL, 0 }
+    { "socket",     run_socket_tests,     TIER_LOOPBACK,
+      "Core socket lifecycle: create, bind, listen, connect, accept, close" },
+    { "sendrecv",   run_sendrecv_tests,   TIER_BOTH,
+      "Data transfer: send, recv, sendto, recvfrom, sendmsg, recvmsg" },
+    { "sockopt",    run_sockopt_tests,    TIER_LOOPBACK,
+      "Socket options: getsockopt, setsockopt, IoctlSocket" },
+    { "waitselect", run_waitselect_tests, TIER_LOOPBACK,
+      "Async I/O: WaitSelect readiness, timeout, signal integration" },
+    { "signals",    run_signals_tests,    TIER_LOOPBACK,
+      "Signals and events: SetSocketSignals, SocketBaseTags, GetSocketEvents" },
+    { "dns",        run_dns_tests,        TIER_BOTH,
+      "Name resolution: gethostbyname/addr, getservby*, getprotoby*" },
+    { "utility",    run_utility_tests,    TIER_LOOPBACK,
+      "Address utilities: Inet_NtoA, inet_addr, Inet_LnaOf, Inet_NetOf" },
+    { "transfer",   run_transfer_tests,   TIER_LOOPBACK,
+      "Descriptor transfer: Dup2Socket, ObtainSocket, ReleaseSocket" },
+    { "errno",      run_errno_tests,      TIER_LOOPBACK,
+      "Error handling: Errno, SetErrnoPtr, SocketBaseTags errno pointers" },
+    { "misc",       run_misc_tests,       TIER_LOOPBACK,
+      "Miscellaneous: getdtablesize, syslog, resource limits" },
+    { "icmp",       run_icmp_tests,       TIER_BOTH,
+      "ICMP echo: raw socket ping, RTT measurement" },
+    { "throughput", run_throughput_tests,  TIER_BOTH,
+      "Throughput benchmarks: TCP/UDP loopback and network transfer" },
+    { NULL, NULL, 0, NULL }
 };
 
 static void print_usage(void)
 {
     printf("Usage: bsdsocktest [CATEGORY <name>] [ALL] [LOOPBACK] [NETWORK]\n"
            "                   [HOST <ip>] [PORT <num>] [LOG <path>] [VERBOSE]\n"
-           "                   [LIST]\n\n"
+           "                   [NOPAGE] [LIST]\n\n"
            "  CATEGORY  Run a single test category by name\n"
            "  ALL       Run all test categories (default)\n"
            "  LOOPBACK  Run only loopback (self-contained) tests\n"
            "  NETWORK   Run only network tests (requires host helper)\n"
            "  HOST      Host helper IP address (default: not set)\n"
            "  PORT      Base port number (default: %d)\n"
-           "  LOG       Duplicate TAP output to log file (AmigaOS path)\n"
-           "  VERBOSE   Enable verbose diagnostics\n"
+           "  LOG       Log file path (default: bsdsocktest.log, NIL: to suppress)\n"
+           "  VERBOSE   Show individual test results on screen\n"
+           "  NOPAGE    Disable pagination (output scrolls freely)\n"
            "  LIST      List available test categories and exit\n",
            DEFAULT_BASE_PORT);
 }
@@ -123,15 +150,73 @@ int main(int argc, char **argv)
     const struct test_category *cat;
     int tier_filter = 0;
     const char *cat_filter = NULL;
+    const char *log_path;
     int exit_code;
     int ran_any = 0;
 
-    (void)argc;
-    (void)argv;
+    /* Workbench startup variables (C89: declare before any code) */
+    struct RDArgs wb_rda;
+    char argbuf[512];
 
     memset(args, 0, sizeof(args));
 
-    rdargs = ReadArgs((STRPTR)TEMPLATE, args, NULL);
+    if (argc == 0) {
+        /* Workbench launch: build CLI-style arg string from Tool Types.
+         * libnix has already: waited for WBStartup, opened our CON:
+         * window via __stdiowin, and called CurrentDir() to the
+         * program's directory. argv is the WBStartup message. */
+        struct WBStartup *wbmsg = (struct WBStartup *)argv;
+        struct DiskObject *dobj = NULL;
+        CONST_STRPTR *tt;
+        char *p = argbuf;
+        UBYTE *val;
+
+        IconBase = OpenLibrary((STRPTR)"icon.library", 36);
+        if (IconBase) {
+            dobj = GetDiskObject(wbmsg->sm_ArgList[0].wa_Name);
+            if (dobj && dobj->do_ToolTypes) {
+                tt = (CONST_STRPTR *)dobj->do_ToolTypes;
+                val = FindToolType(tt, (STRPTR)"HOST");
+                if (val)
+                    p += sprintf(p, "HOST %s ", (char *)val);
+                if (FindToolType(tt, (STRPTR)"LOOPBACK"))
+                    p += sprintf(p, "LOOPBACK ");
+                if (FindToolType(tt, (STRPTR)"ALL"))
+                    p += sprintf(p, "ALL ");
+                if (FindToolType(tt, (STRPTR)"NETWORK"))
+                    p += sprintf(p, "NETWORK ");
+                if (FindToolType(tt, (STRPTR)"VERBOSE"))
+                    p += sprintf(p, "VERBOSE ");
+                if (FindToolType(tt, (STRPTR)"NOPAGE"))
+                    p += sprintf(p, "NOPAGE ");
+                val = FindToolType(tt, (STRPTR)"LOG");
+                if (val)
+                    p += sprintf(p, "LOG %s ", (char *)val);
+                val = FindToolType(tt, (STRPTR)"PORT");
+                if (val)
+                    p += sprintf(p, "PORT %s ", (char *)val);
+                val = FindToolType(tt, (STRPTR)"CATEGORY");
+                if (val)
+                    p += sprintf(p, "CATEGORY %s ", (char *)val);
+            }
+            if (dobj)
+                FreeDiskObject(dobj);
+            CloseLibrary(IconBase);
+            IconBase = NULL;
+        }
+        *p++ = '\n';
+        *p = '\0';
+
+        /* Feed argbuf to ReadArgs via RDA_Source */
+        memset(&wb_rda, 0, sizeof(wb_rda));
+        wb_rda.RDA_Source.CS_Buffer = (STRPTR)argbuf;
+        wb_rda.RDA_Source.CS_Length = strlen(argbuf);
+        rdargs = ReadArgs((STRPTR)TEMPLATE, args, &wb_rda);
+    } else {
+        /* CLI launch: standard ReadArgs from command line */
+        rdargs = ReadArgs((STRPTR)TEMPLATE, args, NULL);
+    }
+
     if (!rdargs) {
         print_usage();
         return RETURN_FAIL;
@@ -157,17 +242,18 @@ int main(int argc, char **argv)
         tier_filter = TIER_NETWORK;
     /* ALL or no selection = run everything (tier_filter stays 0) */
 
-    /* Set up verbose and log file before tap_init() so the TAP
-     * header is captured in the log file too. */
     if (args[ARG_VERBOSE])
         tap_set_verbose(1);
 
-    if (args[ARG_LOG])
-        tap_set_logfile((const char *)args[ARG_LOG]);
+    if (!args[ARG_NOPAGE])
+        tap_set_page(1);
+
+    /* Determine log file path (NULL = default "bsdsocktest.log") */
+    log_path = args[ARG_LOG] ? (const char *)args[ARG_LOG] : NULL;
 
     /* Open bsdsocket.library */
     if (open_bsdsocket() < 0) {
-        tap_init(NULL);
+        tap_init(NULL, log_path);
         tap_plan(0);
         tap_bail("bsdsocket.library not available");
         exit_code = tap_finish();
@@ -175,16 +261,38 @@ int main(int argc, char **argv)
         return exit_code;
     }
 
-    /* Initialize TAP output */
-    tap_init(get_bsdsocket_version());
+    /* Clean up any leaked sockets from previous runs */
+    reset_socket_state();
 
-    /* Connect to host helper if HOST was specified */
+    /* Initialize TAP output */
+    tap_init(get_bsdsocket_version(), log_path);
+
+    /* Initialize high-resolution timing */
+    if (timer_init() < 0) {
+        tap_plan(0);
+        tap_bail("timer.device not available");
+        exit_code = tap_finish();
+        close_bsdsocket();
+        FreeArgs(rdargs);
+        return exit_code;
+    }
+
+    /* Initialize known-failures table for the detected stack */
+    known_init(get_bsdsocket_version());
+
+    /* Connect to host helper if HOST was specified.
+     * Bail out on failure — the user explicitly requested network tests. */
     if (args[ARG_HOST]) {
         const char *host_str = (const char *)args[ARG_HOST];
         if (!helper_connect(host_str)) {
-            tap_diag("Warning: could not connect to host helper");
-            tap_diagf("  host=%s, port=%d", host_str, HELPER_CTRL_PORT);
-            tap_diag("  Network tests will be skipped");
+            tap_diagf("host=%s, port=%d", host_str, HELPER_CTRL_PORT);
+            tap_plan(0);
+            tap_bail("Could not connect to host helper");
+            exit_code = tap_finish();
+            timer_cleanup();
+            close_bsdsocket();
+            FreeArgs(rdargs);
+            return exit_code;
         }
     }
 
@@ -199,9 +307,16 @@ int main(int argc, char **argv)
         if (!should_run(cat, tier_filter, cat_filter))
             continue;
 
-        tap_diagf("--- %s ---", cat->name);
-        cat->run();
+        tap_begin_category(cat->name);
+        if (cat->description)
+            tap_diag(cat->description);
         ran_any = 1;
+        cat->run();
+
+        if (tap_bailed())
+            break;
+
+        tap_end_category();
     }
 
     if (!ran_any && cat_filter) {
@@ -216,6 +331,7 @@ int main(int argc, char **argv)
 
     exit_code = tap_finish();
 
+    timer_cleanup();
     close_bsdsocket();
     FreeArgs(rdargs);
 

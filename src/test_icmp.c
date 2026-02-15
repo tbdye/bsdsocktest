@@ -12,7 +12,6 @@
 #include "helper_proto.h"
 
 #include <proto/bsdsocket.h>
-#include <proto/dos.h>
 
 #include <netinet/in.h>
 #include <string.h>
@@ -56,14 +55,16 @@ static UWORD icmp_checksum(const UBYTE *data, int len)
 }
 
 /* Send ICMP echo request and wait for matching reply.
- * Returns RTT in ticks (1 tick = 20ms), 0 on timeout, -1 on error. */
+ * Returns RTT in microseconds, 0 on timeout, -1 on error.
+ * LONG range limits RTT to ~35 minutes; safe given the 3-second timeout. */
 static LONG icmp_ping(ULONG target_ip, int payload_len, UWORD seq)
 {
     LONG rawfd;
     struct icmp_echo *hdr;
     struct sockaddr_in dst;
-    struct DateStamp start, now;
-    LONG timeout_ms, elapsed, rtt;
+    struct bst_timestamp ts_start, ts_now;
+    LONG timeout_ms;
+    ULONG rtt_us;
     int pktlen, ip_hlen;
     struct icmp_echo *reply;
     fd_set readfds;
@@ -99,7 +100,7 @@ static LONG icmp_ping(ULONG target_ip, int payload_len, UWORD seq)
     }
 
     /* Receive loop with shrinking timeout */
-    DateStamp(&start);
+    timer_now(&ts_start);
     timeout_ms = 3000;
 
     while (timeout_ms > 0) {
@@ -126,9 +127,8 @@ static LONG icmp_ping(ULONG target_ip, int payload_len, UWORD seq)
             reply->id == htons(ICMP_ID) &&
             reply->seq == htons(seq)) {
             /* Matching reply — compute RTT */
-            DateStamp(&now);
-            rtt = (now.ds_Minute - start.ds_Minute) * 50L * 60
-                + (now.ds_Tick - start.ds_Tick);
+            timer_now(&ts_now);
+            rtt_us = timer_elapsed_us(&ts_start, &ts_now);
 
             /* Verify payload integrity */
             if (n >= ip_hlen + 8 + payload_len) {
@@ -139,15 +139,13 @@ static LONG icmp_ping(ULONG target_ip, int payload_len, UWORD seq)
             }
 
             safe_close(rawfd);
-            return rtt > 0 ? rtt : 1;  /* At least 1 tick */
+            return (LONG)(rtt_us > 0 ? rtt_us : 1);
         }
 
 shrink:
         /* Non-matching packet — shrink remaining timeout */
-        DateStamp(&now);
-        elapsed = ((now.ds_Minute - start.ds_Minute) * 50L * 60
-                 + (now.ds_Tick - start.ds_Tick)) * 20;
-        timeout_ms = 3000 - elapsed;
+        timer_now(&ts_now);
+        timeout_ms = 3000 - (LONG)timer_elapsed_ms(&ts_start, &ts_now);
     }
 
     safe_close(rawfd);
@@ -165,56 +163,62 @@ void run_icmp_tests(void)
     /* Check if raw ICMP sockets are available */
     rawfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (rawfd < 0) {
-        tap_skip("icmp_loopback - SOCK_RAW/ICMP not supported");
+        tap_skip("SOCK_RAW/ICMP not supported");
         CHECK_CTRLC();
-        tap_skip("icmp_network - SOCK_RAW/ICMP not supported");
+        tap_skip("SOCK_RAW/ICMP not supported");
         CHECK_CTRLC();
-        tap_skip("icmp_large_payload - SOCK_RAW/ICMP not supported");
+        tap_skip("SOCK_RAW/ICMP not supported");
         CHECK_CTRLC();
-        tap_skip("icmp_multi_ping - SOCK_RAW/ICMP not supported");
+        tap_skip("SOCK_RAW/ICMP not supported");
         CHECK_CTRLC();
-        tap_skip("icmp_timeout - SOCK_RAW/ICMP not supported");
+        tap_skip("SOCK_RAW/ICMP not supported");
         return;
     }
     safe_close(rawfd);
 
     /* 131. icmp_loopback */
     rtt = icmp_ping(htonl(INADDR_LOOPBACK), 56, 1);
-    tap_ok(rtt > 0, "icmp_loopback - ping 127.0.0.1 replied");
-    if (rtt > 0)
-        tap_diagf("  RTT=%ld ticks (%ldms)", (long)rtt, (long)rtt * 20);
-    else
+    tap_ok(rtt > 0, "ICMP echo: loopback 127.0.0.1 [RFC 792]");
+    if (rtt > 0) {
+        tap_diagf("  RTT=%ld.%03ldms", (long)(rtt / 1000), (long)(rtt % 1000));
+        tap_notef("Loopback RTT: %ld.%03ldms",
+                  (long)(rtt / 1000), (long)(rtt % 1000));
+    } else {
         tap_diagf("  result=%ld", (long)rtt);
+    }
 
     CHECK_CTRLC();
 
     /* Network ICMP tests — gated by helper */
     if (!helper_is_connected()) {
-        tap_skip("icmp_network - host helper not connected");
+        tap_skip("host helper not connected");
         CHECK_CTRLC();
-        tap_skip("icmp_large_payload - host helper not connected");
+        tap_skip("host helper not connected");
         CHECK_CTRLC();
-        tap_skip("icmp_multi_ping - host helper not connected");
+        tap_skip("host helper not connected");
         CHECK_CTRLC();
     } else {
         /* 132. icmp_network */
         rtt = icmp_ping(helper_addr(), 56, 2);
-        tap_ok(rtt > 0, "icmp_network - ping helper replied");
-        if (rtt > 0)
-            tap_diagf("  RTT=%ld ticks (%ldms), target=%s",
-                      (long)rtt, (long)rtt * 20,
+        tap_ok(rtt > 0, "ICMP echo: network host [RFC 792]");
+        if (rtt > 0) {
+            tap_diagf("  RTT=%ld.%03ldms, target=%s",
+                      (long)(rtt / 1000), (long)(rtt % 1000),
                       Inet_NtoA(helper_addr()));
-        else
+            tap_notef("Network RTT: %ld.%03ldms",
+                      (long)(rtt / 1000), (long)(rtt % 1000));
+        } else {
             tap_diagf("  result=%ld", (long)rtt);
+        }
 
         CHECK_CTRLC();
 
         /* 133. icmp_large_payload */
         rtt = icmp_ping(helper_addr(), 1024, 3);
-        tap_ok(rtt > 0, "icmp_large_payload - 1024B payload echo replied");
+        tap_ok(rtt > 0, "ICMP echo: 1024-byte payload [RFC 792]");
         if (rtt > 0)
-            tap_diagf("  RTT=%ld ticks (%ldms), payload=1024",
-                      (long)rtt, (long)rtt * 20);
+            tap_diagf("  RTT=%ld.%03ldms, payload=1024",
+                      (long)(rtt / 1000), (long)(rtt % 1000));
         else
             tap_diagf("  result=%ld", (long)rtt);
 
@@ -234,12 +238,16 @@ void run_icmp_tests(void)
                 rtt_sum += rtts[i];
             }
         }
-        tap_ok(success >= 4, "icmp_multi_ping - at least 4 of 5 replies");
+        tap_ok(success >= 4, "ICMP echo: multiple pings reliability [RFC 792]");
         tap_diagf("  received=%d/5", success);
-        if (success > 0)
-            tap_diagf("  RTT min=%ld max=%ld avg=%ld ticks",
-                      (long)rtt_min, (long)rtt_max,
-                      (long)(rtt_sum / success));
+        if (success > 0) {
+            LONG rtt_avg = rtt_sum / success;
+            tap_diagf("  RTT min=%ld.%03ldms max=%ld.%03ldms avg=%ld.%03ldms",
+                      (long)(rtt_min / 1000), (long)(rtt_min % 1000),
+                      (long)(rtt_max / 1000), (long)(rtt_max % 1000),
+                      (long)(rtt_avg / 1000), (long)(rtt_avg % 1000));
+        }
+        tap_notef("Multi-ping: %d/5 replies", success);
     }
 
     CHECK_CTRLC();
@@ -247,14 +255,15 @@ void run_icmp_tests(void)
     /* 135. icmp_timeout */
     rtt = icmp_ping(inet_addr((STRPTR)"192.0.2.1"), 56, 99);
     if (rtt == 0) {
-        tap_ok(1, "icmp_timeout - timed out as expected");
+        tap_ok(1, "ICMP echo: timeout on unreachable host [RFC 792]");
         tap_diag("  192.0.2.1 (TEST-NET-1): no reply within 3s");
     } else if (rtt < 0) {
-        tap_ok(1, "icmp_timeout - sendto error (acceptable)");
+        tap_ok(1, "ICMP echo: timeout on unreachable host [RFC 792]");
         tap_diagf("  errno=%ld (e.g. ENETUNREACH without default route)",
                   (long)get_bsd_errno());
     } else {
-        tap_ok(0, "icmp_timeout - address should be non-routable");
-        tap_diagf("  unexpected reply, RTT=%ld ticks", (long)rtt);
+        tap_ok(0, "ICMP echo: timeout on unreachable host [RFC 792]");
+        tap_diagf("  unexpected reply, RTT=%ld.%03ldms",
+                  (long)(rtt / 1000), (long)(rtt % 1000));
     }
 }

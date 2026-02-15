@@ -4,7 +4,7 @@
  * Tests: SetSocketSignals, SocketBaseTagList signal/event masks,
  *        SO_EVENTMASK, GetSocketEvents.
  *
- * 15 tests (85-99), port offsets 80-99.
+ * 15 tests (73-87), port offsets 80-99.
  */
 
 #include "tap.h"
@@ -35,22 +35,22 @@ void run_signals_tests(void)
 
     /* ---- SetSocketSignals legacy API ---- */
 
-    /* 85. setsocketsignals_basic */
+    /* 73. setsocketsignals_basic */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SetSocketSignals(1UL << sigbit, 0, 0);
         SetSocketSignals(0, 0, 0);
-        tap_ok(1, "setsocketsignals_basic - SetSocketSignals canary (no crash)");
+        tap_ok(1, "SetSocketSignals(): register signal masks [AmiTCP]");
         free_signal(sigbit);
     } else {
-        tap_skip("setsocketsignals_basic - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
     /* ---- SocketBaseTagList roundtrips ---- */
 
-    /* 86. sbt_breakmask */
+    /* 74. sbt_breakmask */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         orig = 0;
@@ -60,18 +60,18 @@ void run_signals_tests(void)
         SocketBaseTags(SBTM_GETREF(SBTC_BREAKMASK), (ULONG)&retrieved,
                        TAG_DONE);
         tap_ok(retrieved == (1UL << sigbit),
-               "sbt_breakmask - SBTC_BREAKMASK roundtrips correctly");
+               "SocketBaseTags(SBTC_BREAKMASK): Ctrl-C signal [AmiTCP]");
         tap_diagf("  set=0x%08lx, got=0x%08lx",
                   (unsigned long)(1UL << sigbit), (unsigned long)retrieved);
         SocketBaseTags(SBTM_SETVAL(SBTC_BREAKMASK), orig, TAG_DONE);
         free_signal(sigbit);
     } else {
-        tap_skip("sbt_breakmask - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 87. sbt_sigeventmask */
+    /* 75. sbt_sigeventmask */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         orig = 0;
@@ -83,41 +83,37 @@ void run_signals_tests(void)
         SocketBaseTags(SBTM_GETREF(SBTC_SIGEVENTMASK), (ULONG)&retrieved,
                        TAG_DONE);
         tap_ok(retrieved == (1UL << sigbit),
-               "sbt_sigeventmask - SBTC_SIGEVENTMASK roundtrips correctly");
+               "SocketBaseTags(SBTC_SIGEVENTMASK): event signal [AmiTCP]");
         tap_diagf("  set=0x%08lx, got=0x%08lx",
                   (unsigned long)(1UL << sigbit), (unsigned long)retrieved);
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("sbt_sigeventmask - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 88. sbt_errnolongptr_get */
+    /* 76. sbt_errnolongptr_get */
     ptr = 0;
     SocketBaseTags(SBTM_GETREF(SBTC_ERRNOLONGPTR), (ULONG)&ptr, TAG_DONE);
-    tap_todo_start("Roadshow does not support GET for errno pointer");
     tap_ok(ptr != 0,
-           "sbt_errnolongptr_get - SBTC_ERRNOLONGPTR returns non-zero pointer");
-    tap_todo_end();
+           "SocketBaseTags(SBTC_ERRNOLONGPTR): get errno pointer [AmiTCP]");
     tap_diagf("  pointer: 0x%08lx", (unsigned long)ptr);
 
     CHECK_CTRLC();
 
-    /* 89. sbt_herrnolongptr_get */
+    /* 77. sbt_herrnolongptr_get */
     ptr = 0;
     SocketBaseTags(SBTM_GETREF(SBTC_HERRNOLONGPTR), (ULONG)&ptr, TAG_DONE);
-    tap_todo_start("Roadshow does not support GET for h_errno pointer");
     tap_ok(ptr != 0,
-           "sbt_herrnolongptr_get - SBTC_HERRNOLONGPTR returns non-zero pointer");
-    tap_todo_end();
+           "SocketBaseTags(SBTC_HERRNOLONGPTR): get h_errno pointer [AmiTCP]");
     tap_diagf("  pointer: 0x%08lx", (unsigned long)ptr);
 
     CHECK_CTRLC();
 
-    /* 90. sbt_dtablesize */
+    /* 78. sbt_dtablesize */
     dtsize = 0;
     SocketBaseTags(SBTM_GETREF(SBTC_DTABLESIZE), (ULONG)&dtsize, TAG_DONE);
     tap_diagf("  current dtablesize: %ld", (long)dtsize);
@@ -126,7 +122,7 @@ void run_signals_tests(void)
     SocketBaseTags(SBTM_GETREF(SBTC_DTABLESIZE), (ULONG)&new_dtsize,
                    TAG_DONE);
     tap_ok(dtsize >= 64 && new_dtsize >= 128,
-           "sbt_dtablesize - SBTC_DTABLESIZE get/set roundtrip");
+           "SocketBaseTags(SBTC_DTABLESIZE): get/set table size [AmiTCP]");
     tap_diagf("  after set 128: %ld", (long)new_dtsize);
     /* Restore (may not reduce) */
     if (dtsize > 0)
@@ -152,7 +148,7 @@ void run_signals_tests(void)
      * e. free_signal(sigbit)
      */
 
-    /* 91. eventmask_fd_read */
+    /* 79. eventmask_fd_read */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 1UL << sigbit,
@@ -173,13 +169,13 @@ void run_signals_tests(void)
             evmask = 0;
             evfd = GetSocketEvents(&evmask);
             tap_ok(evfd == server && (evmask & FD_READ),
-                   "eventmask_fd_read - FD_READ event on data arrival");
+                   "SO_EVENTMASK FD_READ: signal on data arrival [AmiTCP]");
             tap_diagf("  evfd=%ld (expected %ld), evmask=0x%lx",
                       (long)evfd, (long)server, (unsigned long)evmask);
             mask = 0;
             setsockopt(server, SOL_SOCKET, SO_EVENTMASK, &mask, sizeof(mask));
         } else {
-            tap_ok(0, "eventmask_fd_read - could not establish connection");
+            tap_ok(0, "SO_EVENTMASK FD_READ: signal on data arrival [AmiTCP]");
         }
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         safe_close(server);
@@ -188,12 +184,12 @@ void run_signals_tests(void)
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("eventmask_fd_read - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 92. eventmask_fd_connect */
+    /* 80. eventmask_fd_connect */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 1UL << sigbit,
@@ -219,15 +215,15 @@ void run_signals_tests(void)
                 evmask = 0;
                 evfd = GetSocketEvents(&evmask);
                 if (rc == 0 && evfd == -1) {
-                    tap_ok(1, "eventmask_fd_connect - no FD_CONNECT on immediate connect");
+                    tap_ok(1, "SO_EVENTMASK FD_CONNECT: signal on connect [AmiTCP]");
                     tap_diag("  synchronous loopback connect returned 0");
                 } else if (evfd == client && (evmask & FD_CONNECT)) {
-                    tap_ok(1, "eventmask_fd_connect - FD_CONNECT event fired");
+                    tap_ok(1, "SO_EVENTMASK FD_CONNECT: signal on connect [AmiTCP]");
                 } else if (rc < 0 && get_bsd_errno() == EINPROGRESS &&
                            evfd == -1) {
-                    tap_ok(0, "eventmask_fd_connect - EINPROGRESS but no event");
+                    tap_ok(0, "SO_EVENTMASK FD_CONNECT: signal on connect [AmiTCP]");
                 } else {
-                    tap_ok(1, "eventmask_fd_connect - connect event behavior documented");
+                    tap_ok(1, "SO_EVENTMASK FD_CONNECT: signal on connect [AmiTCP]");
                     tap_diagf("  connect rc=%d, evfd=%ld, evmask=0x%lx",
                               rc, (long)evfd, (unsigned long)evmask);
                 }
@@ -237,23 +233,23 @@ void run_signals_tests(void)
                 server = accept_one(listener);
                 safe_close(server);
             } else {
-                tap_ok(0, "eventmask_fd_connect - could not create client socket");
+                tap_ok(0, "SO_EVENTMASK FD_CONNECT: signal on connect [AmiTCP]");
             }
             safe_close(client);
         } else {
-            tap_ok(0, "eventmask_fd_connect - could not create listener");
+            tap_ok(0, "SO_EVENTMASK FD_CONNECT: signal on connect [AmiTCP]");
         }
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         safe_close(listener);
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("eventmask_fd_connect - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 93. eventmask_no_spurious */
+    /* 81. eventmask_no_spurious */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 1UL << sigbit,
@@ -271,26 +267,26 @@ void run_signals_tests(void)
             evmask = 0;
             evfd = GetSocketEvents(&evmask);
             tap_ok(!(pending & (1UL << sigbit)) && evfd == -1,
-                   "eventmask_no_spurious - no events on idle unconnected socket");
+                   "SO_EVENTMASK: no spurious events on idle socket [AmiTCP]");
             tap_diagf("  signal pending: %s, GetSocketEvents: %ld",
                       (pending & (1UL << sigbit)) ? "yes" : "no",
                       (long)evfd);
             mask = 0;
             setsockopt(fd, SOL_SOCKET, SO_EVENTMASK, &mask, sizeof(mask));
         } else {
-            tap_ok(0, "eventmask_no_spurious - could not create socket");
+            tap_ok(0, "SO_EVENTMASK: no spurious events on idle socket [AmiTCP]");
         }
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         safe_close(fd);
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("eventmask_no_spurious - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 94. eventmask_fd_accept */
+    /* 82. eventmask_fd_accept */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 1UL << sigbit,
@@ -310,32 +306,32 @@ void run_signals_tests(void)
                 evmask = 0;
                 evfd = GetSocketEvents(&evmask);
                 tap_ok(evfd == listener && (evmask & FD_ACCEPT),
-                       "eventmask_fd_accept - FD_ACCEPT event on incoming connection");
+                       "SO_EVENTMASK FD_ACCEPT: signal on incoming [AmiTCP]");
                 tap_diagf("  evfd=%ld (expected %ld), evmask=0x%lx",
                           (long)evfd, (long)listener, (unsigned long)evmask);
                 server = accept_one(listener);
                 safe_close(server);
             } else {
-                tap_ok(0, "eventmask_fd_accept - could not connect client");
+                tap_ok(0, "SO_EVENTMASK FD_ACCEPT: signal on incoming [AmiTCP]");
             }
             mask = 0;
             setsockopt(listener, SOL_SOCKET, SO_EVENTMASK, &mask,
                        sizeof(mask));
             safe_close(client);
         } else {
-            tap_ok(0, "eventmask_fd_accept - could not create listener");
+            tap_ok(0, "SO_EVENTMASK FD_ACCEPT: signal on incoming [AmiTCP]");
         }
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         safe_close(listener);
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("eventmask_fd_accept - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 95. eventmask_fd_close */
+    /* 83. eventmask_fd_close */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 1UL << sigbit,
@@ -356,13 +352,13 @@ void run_signals_tests(void)
             evmask = 0;
             evfd = GetSocketEvents(&evmask);
             tap_ok(evfd == server && (evmask & FD_CLOSE),
-                   "eventmask_fd_close - FD_CLOSE event on peer disconnect");
+                   "SO_EVENTMASK FD_CLOSE: signal on peer disconnect [AmiTCP]");
             tap_diagf("  evfd=%ld (expected %ld), evmask=0x%lx",
                       (long)evfd, (long)server, (unsigned long)evmask);
             mask = 0;
             setsockopt(server, SOL_SOCKET, SO_EVENTMASK, &mask, sizeof(mask));
         } else {
-            tap_ok(0, "eventmask_fd_close - could not establish connection");
+            tap_ok(0, "SO_EVENTMASK FD_CLOSE: signal on peer disconnect [AmiTCP]");
         }
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         safe_close(server);
@@ -371,14 +367,14 @@ void run_signals_tests(void)
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("eventmask_fd_close - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
     /* ---- GetSocketEvents behavior ---- */
 
-    /* 96. getsocketevents_clears */
+    /* 84. getsocketevents_clears */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 1UL << sigbit,
@@ -401,13 +397,13 @@ void run_signals_tests(void)
             evmask2 = 0;
             evfd2 = GetSocketEvents(&evmask2);
             tap_ok(evfd1 >= 0 && evfd2 == -1,
-                   "getsocketevents_clears - second call returns -1 (event consumed)");
+                   "GetSocketEvents(): event consumed after retrieval [AmiTCP]");
             tap_diagf("  first: evfd=%ld evmask=0x%lx, second: evfd=%ld",
                       (long)evfd1, (unsigned long)evmask1, (long)evfd2);
             mask = 0;
             setsockopt(server, SOL_SOCKET, SO_EVENTMASK, &mask, sizeof(mask));
         } else {
-            tap_ok(0, "getsocketevents_clears - could not establish connection");
+            tap_ok(0, "GetSocketEvents(): event consumed after retrieval [AmiTCP]");
         }
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         safe_close(server);
@@ -416,12 +412,12 @@ void run_signals_tests(void)
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("getsocketevents_clears - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 97. getsocketevents_multiple */
+    /* 85. getsocketevents_multiple */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 1UL << sigbit,
@@ -472,7 +468,7 @@ void run_signals_tests(void)
                 passed = 1;
             }
             tap_ok(passed,
-                   "getsocketevents_multiple - both sockets reported with FD_READ");
+                   "GetSocketEvents(): round-robin across sockets [AmiTCP]");
             tap_diagf("  first: fd=%ld mask=0x%lx, second: fd=%ld mask=0x%lx, "
                       "third: fd=%ld",
                       (long)evfd1, (unsigned long)evmask1,
@@ -484,7 +480,7 @@ void run_signals_tests(void)
             setsockopt(server2, SOL_SOCKET, SO_EVENTMASK, &mask,
                        sizeof(mask));
         } else {
-            tap_ok(0, "getsocketevents_multiple - could not establish connections");
+            tap_ok(0, "GetSocketEvents(): round-robin across sockets [AmiTCP]");
         }
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         safe_close(server);
@@ -496,23 +492,23 @@ void run_signals_tests(void)
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("getsocketevents_multiple - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 
     CHECK_CTRLC();
 
-    /* 98. getsocketevents_empty */
+    /* 86. getsocketevents_empty */
     evmask = 0;
     evfd = GetSocketEvents(&evmask);
     tap_ok(evfd == -1,
-           "getsocketevents_empty - returns -1 with no pending events");
+           "GetSocketEvents(): -1 when no events pending [AmiTCP]");
     tap_diagf("  returned: %ld", (long)evfd);
 
     CHECK_CTRLC();
 
     /* ---- Stress test ---- */
 
-    /* 99. rapid_waitselect_signal */
+    /* 87. rapid_waitselect_signal */
     sigbit = alloc_signal();
     if (sigbit >= 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 1UL << sigbit,
@@ -559,13 +555,16 @@ void run_signals_tests(void)
                 SetSignal(0, 1UL << sigbit);
             }
             tap_ok(passed,
-                   "rapid_waitselect_signal - 50 iterations of send/event/recv");
+                   "WaitSelect + signals: stress test (50 iterations) [AmiTCP]");
             tap_diagf("  completed: %d/50, total bytes: %d",
                       passed ? 50 : i, (passed ? 50 : i) * 10);
             mask = 0;
             setsockopt(server, SOL_SOCKET, SO_EVENTMASK, &mask, sizeof(mask));
         } else {
-            tap_ok(0, "rapid_waitselect_signal - could not establish connection");
+            tap_ok(0, "WaitSelect + signals: stress test (50 iterations) [AmiTCP]");
+            tap_diagf("  listener=%ld client=%ld server=%ld errno=%ld",
+                      (long)listener, (long)client, (long)server,
+                      (long)get_bsd_errno());
         }
         SocketBaseTags(SBTM_SETVAL(SBTC_SIGEVENTMASK), 0, TAG_DONE);
         safe_close(server);
@@ -574,6 +573,6 @@ void run_signals_tests(void)
         SetSignal(0, 1UL << sigbit);
         free_signal(sigbit);
     } else {
-        tap_skip("rapid_waitselect_signal - could not allocate signal");
+        tap_skip("could not allocate signal");
     }
 }

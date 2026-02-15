@@ -12,11 +12,15 @@
 #include <sys/filio.h>
 #include <netinet/in.h>
 
+#include <devices/timer.h>
+#include <proto/timer.h>
+
 #include <string.h>
 
 /* ---- Library state ---- */
 
 struct Library *SocketBase;
+struct Device *TimerBase;
 
 static LONG bsd_errno;
 static LONG bsd_h_errno;
@@ -88,6 +92,22 @@ void restore_bsd_errno(void)
         SBTM_SETVAL(SBTC_ERRNOLONGPTR), (ULONG)&bsd_errno,
         SBTM_SETVAL(SBTC_HERRNOLONGPTR), (ULONG)&bsd_h_errno,
         TAG_DONE);
+}
+
+void reset_socket_state(void)
+{
+    LONG i;
+    int cleaned = 0;
+
+    /* Close any leftover sockets from previous runs.
+     * On a clean library open this is a no-op (all CloseSocket fail). */
+    for (i = 0; i < 64; i++) {
+        if (CloseSocket(i) == 0)
+            cleaned++;
+    }
+
+    if (cleaned > 0)
+        tap_diagf("  reset: closed %d leftover socket(s)", cleaned);
 }
 
 /* ---- Socket helpers ---- */
@@ -219,6 +239,90 @@ void free_signal(BYTE sigbit)
 {
     if (sigbit >= 0)
         FreeSignal(sigbit);
+}
+
+/* ---- High-resolution timing (timer.device) ---- */
+
+static struct MsgPort *timer_port;
+static struct timerequest *timer_req;
+
+int timer_init(void)
+{
+    timer_port = CreateMsgPort();
+    if (!timer_port) {
+        tap_diag("Could not create timer message port");
+        return -1;
+    }
+
+    timer_req = (struct timerequest *)CreateIORequest(timer_port,
+                    sizeof(struct timerequest));
+    if (!timer_req) {
+        DeleteMsgPort(timer_port);
+        timer_port = NULL;
+        tap_diag("Could not create timer I/O request");
+        return -1;
+    }
+
+    if (OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ,
+                   (struct IORequest *)timer_req, 0) != 0) {
+        DeleteIORequest((struct IORequest *)timer_req);
+        DeleteMsgPort(timer_port);
+        timer_req = NULL;
+        timer_port = NULL;
+        tap_diag("Could not open timer.device");
+        return -1;
+    }
+
+    TimerBase = timer_req->tr_node.io_Device;
+    return 0;
+}
+
+void timer_cleanup(void)
+{
+    if (timer_req) {
+        CloseDevice((struct IORequest *)timer_req);
+        DeleteIORequest((struct IORequest *)timer_req);
+        timer_req = NULL;
+    }
+    if (timer_port) {
+        DeleteMsgPort(timer_port);
+        timer_port = NULL;
+    }
+    TimerBase = NULL;
+}
+
+void timer_now(struct bst_timestamp *ts)
+{
+    struct timeval tv;
+
+    GetSysTime(&tv);
+    ts->ts_secs = tv.tv_secs;
+    ts->ts_micro = tv.tv_micro;
+}
+
+ULONG timer_elapsed_us(const struct bst_timestamp *start,
+                       const struct bst_timestamp *end)
+{
+    ULONG secs;
+    LONG micro;
+
+    secs = end->ts_secs - start->ts_secs;
+    micro = (LONG)end->ts_micro - (LONG)start->ts_micro;
+
+    if (micro < 0) {
+        secs--;
+        micro += 1000000;
+    }
+
+    return secs * 1000000UL + (ULONG)micro;
+}
+
+ULONG timer_elapsed_ms(const struct bst_timestamp *start,
+                       const struct bst_timestamp *end)
+{
+    ULONG us = timer_elapsed_us(start, end);
+
+    return us / 1000 + ((us % 1000) >= 500 ? 1 : 0);
 }
 
 /* ---- Data patterns ---- */

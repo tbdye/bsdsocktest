@@ -4,7 +4,7 @@
  * Tests: socket, bind, listen, connect, accept, shutdown,
  *        CloseSocket, getsockname, getpeername.
  *
- * 23 tests, port offsets 0-19.
+ * 23 tests (1-23), port offsets 0-19.
  */
 
 #include "tap.h"
@@ -31,14 +31,14 @@ void run_socket_tests(void)
 
     /* 1. socket_create_tcp */
     fd = socket(AF_INET, SOCK_STREAM, 0);
-    tap_ok(fd >= 0, "socket_create_tcp - TCP socket created");
+    tap_ok(fd >= 0, "socket(): create SOCK_STREAM (TCP) [BSD 4.4]");
     safe_close(fd);
 
     CHECK_CTRLC();
 
     /* 2. socket_create_udp */
     fd = socket(AF_INET, SOCK_DGRAM, 0);
-    tap_ok(fd >= 0, "socket_create_udp - UDP socket created");
+    tap_ok(fd >= 0, "socket(): create SOCK_DGRAM (UDP) [BSD 4.4]");
     safe_close(fd);
 
     CHECK_CTRLC();
@@ -46,12 +46,12 @@ void run_socket_tests(void)
     /* 3. socket_create_raw */
     fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (fd >= 0) {
-        tap_ok(1, "socket_create_raw - raw ICMP socket created");
+        tap_ok(1, "socket(): create SOCK_RAW (ICMP) [BSD 4.4]");
         safe_close(fd);
     } else if (get_bsd_errno() == EACCES) {
-        tap_skip("socket_create_raw - raw sockets require privileges");
+        tap_skip("raw sockets require privileges");
     } else {
-        tap_ok(fd >= 0, "socket_create_raw - raw ICMP socket created");
+        tap_ok(fd >= 0, "socket(): create SOCK_RAW (ICMP) [BSD 4.4]");
     }
 
     CHECK_CTRLC();
@@ -59,7 +59,7 @@ void run_socket_tests(void)
     /* 4. socket_invalid_domain */
     fd = socket(-1, SOCK_STREAM, 0);
     tap_ok(fd == -1 && get_bsd_errno() != 0,
-           "socket_invalid_domain - invalid domain fails with errno");
+           "socket(): reject invalid domain (errno) [BSD 4.4]");
     if (fd >= 0)
         safe_close(fd);
 
@@ -68,7 +68,7 @@ void run_socket_tests(void)
     /* 5. socket_invalid_type */
     fd = socket(AF_INET, 999, 0);
     tap_ok(fd == -1 && get_bsd_errno() != 0,
-           "socket_invalid_type - invalid type fails with errno");
+           "socket(): reject invalid type (errno) [BSD 4.4]");
     if (fd >= 0)
         safe_close(fd);
 
@@ -88,10 +88,10 @@ void run_socket_tests(void)
         addrlen = sizeof(addr);
         getsockname(fd, (struct sockaddr *)&addr, &addrlen);
         tap_ok(rc == 0 && ntohs(addr.sin_port) > 0,
-               "bind_any_port_zero - bind to INADDR_ANY:0 assigns port");
+               "bind(): INADDR_ANY port 0 auto-assigns ephemeral port [BSD 4.4]");
         tap_diagf("  assigned port: %d", (int)ntohs(addr.sin_port));
     } else {
-        tap_ok(0, "bind_any_port_zero - could not create socket");
+        tap_ok(0, "bind(): INADDR_ANY port 0 auto-assigns ephemeral port [BSD 4.4]");
     }
     safe_close(fd);
 
@@ -112,9 +112,9 @@ void run_socket_tests(void)
         addrlen = sizeof(addr);
         getsockname(fd, (struct sockaddr *)&addr, &addrlen);
         tap_ok(rc == 0 && ntohs(addr.sin_port) == port,
-               "bind_specific_port - bind to specific port succeeds");
+               "bind(): specific port assignment [BSD 4.4]");
     } else {
-        tap_ok(0, "bind_specific_port - could not create socket");
+        tap_ok(0, "bind(): specific port assignment [BSD 4.4]");
     }
     safe_close(fd);
 
@@ -133,9 +133,9 @@ void run_socket_tests(void)
         listen(fd, 5);
         rc = bind(fd2, (struct sockaddr *)&addr, sizeof(addr));
         tap_ok(rc < 0 && get_bsd_errno() == EADDRINUSE,
-               "bind_eaddrinuse - double bind fails with EADDRINUSE");
+               "bind(): EADDRINUSE on double-bind [BSD 4.4]");
     } else {
-        tap_ok(0, "bind_eaddrinuse - could not create sockets");
+        tap_ok(0, "bind(): EADDRINUSE on double-bind [BSD 4.4]");
     }
     safe_close(fd);
     safe_close(fd2);
@@ -156,9 +156,9 @@ void run_socket_tests(void)
         addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         bind(fd, (struct sockaddr *)&addr, sizeof(addr));
         rc = listen(fd, 5);
-        tap_ok(rc == 0, "listen_bound - listen on bound socket succeeds");
+        tap_ok(rc == 0, "listen(): on bound socket [BSD 4.4]");
     } else {
-        tap_ok(0, "listen_bound - could not create socket");
+        tap_ok(0, "listen(): on bound socket [BSD 4.4]");
     }
     safe_close(fd);
 
@@ -169,14 +169,14 @@ void run_socket_tests(void)
     if (fd >= 0) {
         rc = listen(fd, 5);
         if (rc == 0) {
-            tap_ok(1, "listen_unbound - listen without bind succeeds (auto-bind)");
+            tap_ok(1, "listen(): on unbound socket (auto-bind behavior) [BSD 4.4]");
             tap_diag("  behavior: auto-bind");
         } else {
-            tap_ok(1, "listen_unbound - listen without bind fails (expected on some stacks)");
-            tap_diag("  behavior: failed");
+            tap_ok(1, "listen(): on unbound socket (auto-bind behavior) [BSD 4.4]");
+            tap_diag("  behavior: rejected (expected on some stacks)");
         }
     } else {
-        tap_ok(0, "listen_unbound - could not create socket");
+        tap_ok(0, "listen(): on unbound socket (auto-bind behavior) [BSD 4.4]");
     }
     safe_close(fd);
 
@@ -190,7 +190,7 @@ void run_socket_tests(void)
     client = make_loopback_client(port);
     server = accept_one(listener);
     tap_ok(listener >= 0 && client >= 0 && server >= 0,
-           "connect_loopback - connect/accept on loopback succeeds");
+           "connect(): TCP to loopback listener [BSD 4.4]");
     safe_close(server);
     safe_close(client);
     safe_close(listener);
@@ -207,9 +207,9 @@ void run_socket_tests(void)
         addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         rc = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
         tap_ok(rc < 0 && get_bsd_errno() == ECONNREFUSED,
-               "connect_refused - connect to closed port gives ECONNREFUSED");
+               "connect(): ECONNREFUSED to closed port [BSD 4.4]");
     } else {
-        tap_ok(0, "connect_refused - could not create socket");
+        tap_ok(0, "connect(): ECONNREFUSED to closed port [BSD 4.4]");
     }
     safe_close(fd);
 
@@ -223,7 +223,7 @@ void run_socket_tests(void)
     client = make_loopback_client(port);
     server = accept_one(listener);
     tap_ok(server >= 0 && server != listener,
-           "accept_basic - accepted fd differs from listener");
+           "accept(): returns new descriptor [BSD 4.4]");
     safe_close(server);
     safe_close(client);
     safe_close(listener);
@@ -242,10 +242,10 @@ void run_socket_tests(void)
                addr.sin_family == AF_INET &&
                addr.sin_addr.s_addr == htonl(INADDR_LOOPBACK) &&
                addr.sin_port != 0,
-               "accept_addr - accept fills address struct correctly");
+               "accept(): fills peer address struct [BSD 4.4]");
         safe_close(server);
     } else {
-        tap_ok(0, "accept_addr - could not establish connection");
+        tap_ok(0, "accept(): fills peer address struct [BSD 4.4]");
     }
     safe_close(client);
     safe_close(listener);
@@ -259,10 +259,10 @@ void run_socket_tests(void)
         set_nonblocking(listener);
         server = accept_one(listener);
         tap_ok(server < 0 && get_bsd_errno() == EWOULDBLOCK,
-               "accept_nonblocking_ewouldblock - non-blocking accept with no pending conn");
+               "accept(): EWOULDBLOCK when non-blocking, no pending [BSD 4.4]");
         safe_close(server);
     } else {
-        tap_ok(0, "accept_nonblocking_ewouldblock - could not create listener");
+        tap_ok(0, "accept(): EWOULDBLOCK when non-blocking, no pending [BSD 4.4]");
     }
     safe_close(listener);
 
@@ -277,9 +277,9 @@ void run_socket_tests(void)
     server = accept_one(listener);
     if (client >= 0 && server >= 0) {
         rc = shutdown(client, 0); /* SHUT_RD */
-        tap_ok(rc == 0, "shutdown_rd - shutdown(SHUT_RD) returns 0");
+        tap_ok(rc == 0, "shutdown(SHUT_RD): disable receives [BSD 4.4]");
     } else {
-        tap_ok(0, "shutdown_rd - could not establish connection");
+        tap_ok(0, "shutdown(SHUT_RD): disable receives [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -299,12 +299,12 @@ void run_socket_tests(void)
             /* Server should see EOF (recv returns 0) */
             rc = recv(server, (UBYTE *)buf, sizeof(buf), 0);
             tap_ok(rc == 0,
-                   "shutdown_wr - peer sees EOF after SHUT_WR");
+                   "shutdown(SHUT_WR): peer sees EOF [BSD 4.4]");
         } else {
-            tap_ok(0, "shutdown_wr - shutdown(SHUT_WR) failed");
+            tap_ok(0, "shutdown(SHUT_WR): peer sees EOF [BSD 4.4]");
         }
     } else {
-        tap_ok(0, "shutdown_wr - could not establish connection");
+        tap_ok(0, "shutdown(SHUT_WR): peer sees EOF [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -319,9 +319,9 @@ void run_socket_tests(void)
     server = accept_one(listener);
     if (client >= 0 && server >= 0) {
         rc = shutdown(client, 2); /* SHUT_RDWR */
-        tap_ok(rc == 0, "shutdown_rdwr - shutdown(SHUT_RDWR) returns 0");
+        tap_ok(rc == 0, "shutdown(SHUT_RDWR): full close [BSD 4.4]");
     } else {
-        tap_ok(0, "shutdown_rdwr - could not establish connection");
+        tap_ok(0, "shutdown(SHUT_RDWR): full close [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -334,14 +334,14 @@ void run_socket_tests(void)
     /* 19. closesocket_valid */
     fd = make_tcp_socket();
     tap_ok(fd >= 0 && CloseSocket(fd) == 0,
-           "closesocket_valid - CloseSocket returns 0");
+           "CloseSocket(): valid descriptor [AmiTCP]");
 
     CHECK_CTRLC();
 
     /* 20. closesocket_invalid */
     rc = CloseSocket(-1);
     tap_ok(rc != 0,
-           "closesocket_invalid - CloseSocket(-1) returns error without crash");
+           "CloseSocket(): invalid descriptor returns error [AmiTCP]");
 
     CHECK_CTRLC();
 
@@ -365,9 +365,9 @@ void run_socket_tests(void)
         tap_ok(addr.sin_family == AF_INET &&
                addr.sin_port == htons(port) &&
                addr.sin_addr.s_addr == htonl(INADDR_LOOPBACK),
-               "getsockname_after_bind - returns correct bound address");
+               "getsockname(): returns bound address [BSD 4.4]");
     } else {
-        tap_ok(0, "getsockname_after_bind - could not create socket");
+        tap_ok(0, "getsockname(): returns bound address [BSD 4.4]");
     }
     safe_close(fd);
 
@@ -387,9 +387,9 @@ void run_socket_tests(void)
         tap_ok(rc == 0 &&
                addr.sin_family == AF_INET &&
                addr.sin_addr.s_addr == htonl(INADDR_LOOPBACK),
-               "getpeername_connected - returns peer address on connected socket");
+               "getpeername(): returns peer address after connect [BSD 4.4]");
     } else {
-        tap_ok(0, "getpeername_connected - could not establish connection");
+        tap_ok(0, "getpeername(): returns peer address after connect [BSD 4.4]");
     }
     safe_close(server);
     safe_close(client);
@@ -403,9 +403,9 @@ void run_socket_tests(void)
         addrlen = sizeof(addr);
         rc = getpeername(fd, (struct sockaddr *)&addr, &addrlen);
         tap_ok(rc < 0 && get_bsd_errno() == ENOTCONN,
-               "getpeername_unconnected - unconnected socket gives ENOTCONN");
+               "getpeername(): ENOTCONN on unconnected socket [BSD 4.4]");
     } else {
-        tap_ok(0, "getpeername_unconnected - could not create socket");
+        tap_ok(0, "getpeername(): ENOTCONN on unconnected socket [BSD 4.4]");
     }
     safe_close(fd);
 }

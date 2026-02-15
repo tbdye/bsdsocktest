@@ -13,7 +13,6 @@
 #include "helper_proto.h"
 
 #include <proto/bsdsocket.h>
-#include <proto/dos.h>
 
 #include <netinet/in.h>
 #include <string.h>
@@ -30,16 +29,6 @@
 static unsigned char tp_sbuf[TP_BUFSIZE];
 static unsigned char tp_rbuf[TP_BUFSIZE];
 
-static LONG elapsed_ms(struct DateStamp *before, struct DateStamp *after)
-{
-    LONG ticks;
-
-    ticks = (after->ds_Days - before->ds_Days) * 24L * 60 * 50 * 60
-          + (after->ds_Minute - before->ds_Minute) * 50L * 60
-          + (after->ds_Tick - before->ds_Tick);
-    return ticks * 20;  /* 1 tick = 20ms */
-}
-
 void run_throughput_tests(void)
 {
     LONG listener, client, server;
@@ -49,7 +38,7 @@ void run_throughput_tests(void)
     LONG maxfd, rc, n, chunk;
     fd_set readfds, writefds;
     struct timeval tv;
-    struct DateStamp before, after;
+    struct bst_timestamp ts_before, ts_after;
     LONG ms, kbps;
 
     fill_test_pattern(tp_sbuf, TP_BUFSIZE, 0);
@@ -67,7 +56,7 @@ void run_throughput_tests(void)
         total_recv = 0;
         send_done = 0;
 
-        DateStamp(&before);
+        timer_now(&ts_before);
         while (total_recv < TP_TCP_BYTES) {
             FD_ZERO(&readfds);
             FD_ZERO(&writefds);
@@ -98,16 +87,17 @@ void run_throughput_tests(void)
                 else if (n == 0) break;  /* EOF */
             }
         }
-        DateStamp(&after);
+        timer_now(&ts_after);
 
-        ms = elapsed_ms(&before, &after);
+        ms = (LONG)timer_elapsed_ms(&ts_before, &ts_after);
         kbps = (ms > 0) ? (total_recv / 1024L) * 1000L / ms : 0;
         tap_ok(total_recv >= TP_TCP_BYTES * 90 / 100,
-               "tp_tcp_loopback - 512KB TCP loopback transfer");
+               "Throughput: TCP loopback send/recv [benchmark]");
         tap_diagf("  sent=%ld recv=%ld ms=%ld KB/s=%ld",
                   (long)total_sent, (long)total_recv, (long)ms, (long)kbps);
+        tap_notef("TCP loopback: %ld KB/s", (long)kbps);
     } else {
-        tap_ok(0, "tp_tcp_loopback - could not establish connection");
+        tap_ok(0, "Throughput: TCP loopback send/recv [benchmark]");
     }
     safe_close(server);
     safe_close(client);
@@ -117,14 +107,14 @@ void run_throughput_tests(void)
 
     /* ---- 137. tp_tcp_network ---- */
     if (!helper_is_connected()) {
-        tap_skip("tp_tcp_network - host helper not connected");
+        tap_skip("host helper not connected");
     } else {
         LONG fd;
 
         fd = helper_connect_service(HELPER_TCP_SINK);
         if (fd >= 0) {
             total_sent = 0;
-            DateStamp(&before);
+            timer_now(&ts_before);
             while (total_sent < TP_TCP_BYTES) {
                 chunk = TP_TCP_BYTES - total_sent;
                 if (chunk > TP_BUFSIZE) chunk = TP_BUFSIZE;
@@ -132,17 +122,18 @@ void run_throughput_tests(void)
                 if (n <= 0) break;
                 total_sent += n;
             }
-            DateStamp(&after);
+            timer_now(&ts_after);
 
-            ms = elapsed_ms(&before, &after);
+            ms = (LONG)timer_elapsed_ms(&ts_before, &ts_after);
             kbps = (ms > 0) ? (total_sent / 1024L) * 1000L / ms : 0;
             tap_ok(total_sent > 0,
-                   "tp_tcp_network - 512KB TCP to helper sink");
+                   "Throughput: TCP via network to host [benchmark]");
             tap_diagf("  sent=%ld ms=%ld KB/s=%ld",
                       (long)total_sent, (long)ms, (long)kbps);
+            tap_notef("TCP network: %ld KB/s", (long)kbps);
             safe_close(fd);
         } else {
-            tap_ok(0, "tp_tcp_network - could not connect to sink");
+            tap_ok(0, "Throughput: TCP via network to host [benchmark]");
         }
     }
 
@@ -169,7 +160,7 @@ void run_throughput_tests(void)
             addr_b.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
             bind(sock_b, (struct sockaddr *)&addr_b, sizeof(addr_b));
 
-            DateStamp(&before);
+            timer_now(&ts_before);
             for (i = 0; i < TP_UDP_COUNT; i++) {
                 fill_test_pattern(tp_sbuf, TP_UDP_SIZE, i);
                 sendto(sock_a, (UBYTE *)tp_sbuf, TP_UDP_SIZE, 0,
@@ -197,20 +188,22 @@ void run_throughput_tests(void)
                     }
                 }
             }
-            DateStamp(&after);
+            timer_now(&ts_after);
 
-            ms = elapsed_ms(&before, &after);
+            ms = (LONG)timer_elapsed_ms(&ts_before, &ts_after);
             kbps = (ms > 0)
                  ? ((long)received * TP_UDP_SIZE / 1024L) * 1000L / ms
                  : 0;
             tap_ok(received > 0,
-                   "tp_udp_loopback - UDP loopback datagram throughput");
+                   "Throughput: UDP loopback [benchmark]");
             tap_diagf("  sent=%d recv=%d loss=%ld%% ms=%ld KB/s=%ld",
                       TP_UDP_COUNT, received,
                       (long)(TP_UDP_COUNT - received) * 100 / TP_UDP_COUNT,
                       (long)ms, (long)kbps);
+            tap_notef("UDP loopback: %ld KB/s (%d/%d received)",
+                      (long)kbps, received, TP_UDP_COUNT);
         } else {
-            tap_ok(0, "tp_udp_loopback - could not create UDP sockets");
+            tap_ok(0, "Throughput: UDP loopback [benchmark]");
         }
         safe_close(sock_a);
         safe_close(sock_b);
@@ -220,7 +213,7 @@ void run_throughput_tests(void)
 
     /* ---- 139. tp_udp_network ---- */
     if (!helper_is_connected()) {
-        tap_skip("tp_udp_network - host helper not connected");
+        tap_skip("host helper not connected");
     } else {
         LONG fd;
         struct sockaddr_in echo_addr;
@@ -233,7 +226,7 @@ void run_throughput_tests(void)
             echo_addr.sin_port = htons(HELPER_UDP_ECHO);
             echo_addr.sin_addr.s_addr = helper_addr();
 
-            DateStamp(&before);
+            timer_now(&ts_before);
             for (i = 0; i < TP_UDP_COUNT; i++) {
                 fill_test_pattern(tp_sbuf, TP_UDP_SIZE, i);
                 sendto(fd, (UBYTE *)tp_sbuf, TP_UDP_SIZE, 0,
@@ -260,21 +253,23 @@ void run_throughput_tests(void)
                     }
                 }
             }
-            DateStamp(&after);
+            timer_now(&ts_after);
 
-            ms = elapsed_ms(&before, &after);
+            ms = (LONG)timer_elapsed_ms(&ts_before, &ts_after);
             kbps = (ms > 0)
                  ? ((long)received * TP_UDP_SIZE / 1024L) * 1000L / ms
                  : 0;
             tap_ok(received > 0,
-                   "tp_udp_network - UDP network echo throughput");
+                   "Throughput: UDP via network to host [benchmark]");
             tap_diagf("  sent=%d echoed=%d loss=%ld%% ms=%ld KB/s=%ld",
                       TP_UDP_COUNT, received,
                       (long)(TP_UDP_COUNT - received) * 100 / TP_UDP_COUNT,
                       (long)ms, (long)kbps);
+            tap_notef("UDP network: %ld KB/s (%d/%d echoed)",
+                      (long)kbps, received, TP_UDP_COUNT);
             safe_close(fd);
         } else {
-            tap_ok(0, "tp_udp_network - could not create UDP socket");
+            tap_ok(0, "Throughput: UDP via network to host [benchmark]");
         }
     }
 
@@ -288,7 +283,7 @@ void run_throughput_tests(void)
     if (client >= 0 && server >= 0) {
         LONG seg_ms[TP_NUM_SEGMENTS];
         int cur_seg;
-        struct DateStamp seg_start, seg_now, total_before, total_after;
+        struct bst_timestamp seg_start, seg_now, total_before, total_after;
         LONG seg_kbps;
 
         set_nonblocking(client);
@@ -299,8 +294,8 @@ void run_throughput_tests(void)
         send_done = 0;
         cur_seg = 0;
 
-        DateStamp(&total_before);
-        DateStamp(&seg_start);
+        timer_now(&total_before);
+        timer_now(&seg_start);
 
         while (total_recv < TP_SUSTAINED) {
             FD_ZERO(&readfds);
@@ -325,8 +320,9 @@ void run_throughput_tests(void)
                     /* Checkpoint at segment boundaries */
                     while (total_sent >= (cur_seg + 1) * TP_SEGMENT_SIZE &&
                            cur_seg < TP_NUM_SEGMENTS) {
-                        DateStamp(&seg_now);
-                        seg_ms[cur_seg] = elapsed_ms(&seg_start, &seg_now);
+                        timer_now(&seg_now);
+                        seg_ms[cur_seg] = (LONG)timer_elapsed_ms(
+                            &seg_start, &seg_now);
                         seg_start = seg_now;
                         cur_seg++;
                     }
@@ -342,14 +338,15 @@ void run_throughput_tests(void)
                 else if (n == 0) break;
             }
         }
-        DateStamp(&total_after);
+        timer_now(&total_after);
 
-        ms = elapsed_ms(&total_before, &total_after);
+        ms = (LONG)timer_elapsed_ms(&total_before, &total_after);
         kbps = (ms > 0) ? (total_recv / 1024L) * 1000L / ms : 0;
         tap_ok(total_recv >= TP_SUSTAINED,
-               "tp_tcp_sustained_loopback - 1MB sustained TCP loopback");
+               "Throughput: TCP sustained 1MB+ loopback [benchmark]");
         tap_diagf("  sent=%ld recv=%ld total_ms=%ld overall_KB/s=%ld",
                   (long)total_sent, (long)total_recv, (long)ms, (long)kbps);
+        tap_notef("TCP sustained loopback: %ld KB/s", (long)kbps);
 
         /* Per-segment diagnostics */
         if (cur_seg > 0) {
@@ -373,7 +370,7 @@ void run_throughput_tests(void)
             }
         }
     } else {
-        tap_ok(0, "tp_tcp_sustained_loopback - could not establish connection");
+        tap_ok(0, "Throughput: TCP sustained 1MB+ loopback [benchmark]");
     }
     safe_close(server);
     safe_close(client);
@@ -383,12 +380,12 @@ void run_throughput_tests(void)
 
     /* ---- 141. tp_tcp_sustained_network ---- */
     if (!helper_is_connected()) {
-        tap_skip("tp_tcp_sustained_network - host helper not connected");
+        tap_skip("host helper not connected");
     } else {
         LONG fd;
         LONG seg_ms[TP_NUM_SEGMENTS];
         int cur_seg;
-        struct DateStamp seg_start, seg_now, total_before, total_after;
+        struct bst_timestamp seg_start, seg_now, total_before, total_after;
         LONG seg_kbps;
 
         fd = helper_connect_service(HELPER_TCP_SINK);
@@ -396,8 +393,8 @@ void run_throughput_tests(void)
             total_sent = 0;
             cur_seg = 0;
 
-            DateStamp(&total_before);
-            DateStamp(&seg_start);
+            timer_now(&total_before);
+            timer_now(&seg_start);
 
             while (total_sent < TP_SUSTAINED) {
                 chunk = TP_SUSTAINED - total_sent;
@@ -409,20 +406,22 @@ void run_throughput_tests(void)
                 /* Checkpoint at segment boundaries */
                 while (total_sent >= (cur_seg + 1) * TP_SEGMENT_SIZE &&
                        cur_seg < TP_NUM_SEGMENTS) {
-                    DateStamp(&seg_now);
-                    seg_ms[cur_seg] = elapsed_ms(&seg_start, &seg_now);
+                    timer_now(&seg_now);
+                    seg_ms[cur_seg] = (LONG)timer_elapsed_ms(
+                        &seg_start, &seg_now);
                     seg_start = seg_now;
                     cur_seg++;
                 }
             }
-            DateStamp(&total_after);
+            timer_now(&total_after);
 
-            ms = elapsed_ms(&total_before, &total_after);
+            ms = (LONG)timer_elapsed_ms(&total_before, &total_after);
             kbps = (ms > 0) ? (total_sent / 1024L) * 1000L / ms : 0;
             tap_ok(total_sent >= TP_SUSTAINED,
-                   "tp_tcp_sustained_network - 1MB sustained TCP to sink");
+                   "Throughput: TCP sustained 1MB+ via network [benchmark]");
             tap_diagf("  sent=%ld total_ms=%ld overall_KB/s=%ld",
                       (long)total_sent, (long)ms, (long)kbps);
+            tap_notef("TCP sustained network: %ld KB/s", (long)kbps);
 
             /* Per-segment diagnostics */
             if (cur_seg > 0) {
@@ -447,7 +446,7 @@ void run_throughput_tests(void)
             }
             safe_close(fd);
         } else {
-            tap_ok(0, "tp_tcp_sustained_network - could not connect to sink");
+            tap_ok(0, "Throughput: TCP sustained 1MB+ via network [benchmark]");
         }
     }
 }

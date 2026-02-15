@@ -35,6 +35,10 @@ int open_bsdsocket(void);
 /* Close bsdsocket.library. */
 void close_bsdsocket(void);
 
+/* Close any leftover sockets from previous runs and log the count.
+ * Call once after open_bsdsocket() before running tests. */
+void reset_socket_state(void);
+
 /* Get the bsdsocket.library version string (via SBTC_RELEASESTRPTR).
  * Returns NULL if library is not open or string is unavailable. */
 const char *get_bsdsocket_version(void);
@@ -101,6 +105,35 @@ BYTE alloc_signal(void);
 
 /* Free a signal bit. Tolerates -1 (no-op). */
 void free_signal(BYTE sigbit);
+
+/* ---- High-resolution timing (timer.device) ---- */
+
+/* Opaque timestamp with microsecond precision.
+ * Same layout as AmigaOS struct timeval; avoids exposing devices/timer.h. */
+struct bst_timestamp {
+    ULONG ts_secs;
+    ULONG ts_micro;
+};
+
+/* Open timer.device for microsecond timing.
+ * Returns 0 on success, -1 on failure (diagnostic emitted).
+ * Must be called once before any timing functions. */
+int timer_init(void);
+
+/* Close timer.device. */
+void timer_cleanup(void);
+
+/* Capture the current system time. */
+void timer_now(struct bst_timestamp *ts);
+
+/* Return elapsed microseconds between two timestamps.
+ * Overflows after ~71 minutes — acceptable for all tests. */
+ULONG timer_elapsed_us(const struct bst_timestamp *start,
+                       const struct bst_timestamp *end);
+
+/* Return elapsed milliseconds (rounded to nearest). */
+ULONG timer_elapsed_ms(const struct bst_timestamp *start,
+                       const struct bst_timestamp *end);
 
 /* ---- Data patterns ---- */
 
