@@ -93,9 +93,7 @@ static const struct known_entry amiberry_711_entries[] = {
 
 /* ---- Amiberry bsdsocket emulation (verified against UAE 8.0.0) ---- */
 
-static const struct known_entry amiberry_entries[] = {
-    { 81, KNOWN_FAILURE, "SO_EVENTMASK fires spurious event on idle socket (flaky)" },
-};
+/* No known issues — all 31 issues from 7.1.1 fixed upstream, event race resolved */
 
 /* ---- WinUAE bsdsocket emulation (verified against UAE 6.0.2) ---- */
 
@@ -143,8 +141,8 @@ static const struct stack_profile profiles[] = {
     {
         "UAE 8.0.0",
         "Amiberry",
-        amiberry_entries,
-        sizeof(amiberry_entries) / sizeof(amiberry_entries[0])
+        NULL,
+        0
     },
     {
         "UAE 6.0.2",

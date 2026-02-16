@@ -150,13 +150,19 @@ to host-side socket operations. It does not use SANA-II or any NIC-level
 emulation. Enable with `bsdsocket_emu=true` in the .uae configuration.
 
 Amiberry 8.0.0 (development master) includes fixes for all 31 issues found
-in 7.1.1. One intermittent issue remains.
+in 7.1.1. No known issues remain.
 
-### Remaining issues (1)
+### Results
 
-| Test | Description | Detail |
-|-----:|-------------|--------|
-| 81 | SO_EVENTMASK: no spurious events on idle socket | `GetSocketEvents()` intermittently returns a spurious event fd on a socket with no activity. A one-shot guard and `getpeername()` check resolved the issue in most cases, but under certain timing conditions a delayed event from a prior test can still leak through. Flaky -- passes on most runs. |
+139 passed, 0 failed, 3 skipped (142 total).
+
+The 3 skipped tests are environmental:
+
+| Test | Reason |
+|-----:|--------|
+| 34 | Host kernel send buffer exceeds 1 MB; cannot trigger "buffer full" condition. |
+| 101 | No `/etc/networks` database; `getnetbyname()` has nothing to look up. |
+| 102 | No `/etc/networks` database; `getnetbyaddr()` has nothing to look up. |
 
 ---
 
