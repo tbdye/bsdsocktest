@@ -47,19 +47,54 @@ static const struct known_entry roadshow_entries[] = {
     { 77, KNOWN_FAILURE, "SBTC_HERRNOLONGPTR GET not supported (SET-only)" },
 };
 
+/* ---- Amiberry 7.1.1 bsdsocket emulation (verified against UAE 7.1.1) ---- */
+
+static const struct known_entry amiberry_711_entries[] = {
+    /* Crashes: would crash the emulator if run */
+    { 70, KNOWN_CRASH,   "WaitSelect >64 fds causes out-of-bounds access" },
+    { 79, KNOWN_CRASH,   "SO_EVENTMASK FD_READ crashes emulator" },
+    { 80, KNOWN_CRASH,   "SO_EVENTMASK FD_CONNECT crashes emulator" },
+    { 81, KNOWN_CRASH,   "SO_EVENTMASK spurious event test crashes emulator" },
+    { 82, KNOWN_CRASH,   "SO_EVENTMASK FD_ACCEPT crashes emulator" },
+    { 83, KNOWN_CRASH,   "SO_EVENTMASK FD_CLOSE crashes emulator" },
+    { 84, KNOWN_CRASH,   "GetSocketEvents consumed test crashes emulator" },
+    { 85, KNOWN_CRASH,   "GetSocketEvents round-robin test crashes emulator" },
+    { 87, KNOWN_CRASH,   "WaitSelect + signals stress test crashes emulator" },
+    /* Failures: sendmsg/recvmsg */
+    { 31, KNOWN_FAILURE, "sendmsg() data corruption (sends from address 0)" },
+    { 32, KNOWN_FAILURE, "recvmsg() off-by-one in MSG_TRUNC detection" },
+    /* Failures: socket options */
+    { 49, KNOWN_FAILURE, "SO_RCVTIMEO getsockopt fails (optlen mismatch)" },
+    { 50, KNOWN_FAILURE, "SO_SNDTIMEO getsockopt fails (optlen mismatch)" },
+    /* Failures: WaitSelect / descriptor table */
+    { 63, KNOWN_FAILURE, "WaitSelect NULL fdsets returns immediately" },
+    { 78, KNOWN_FAILURE, "SBTC_DTABLESIZE GET returns 0" },
+    /* Failures: DNS / services */
+    { 93, KNOWN_FAILURE, "getservbyname() returns stale pointer" },
+    { 94, KNOWN_FAILURE, "getservbyport() byte order bug" },
+    { 98, KNOWN_FAILURE, "gethostname() logic reversed, returns empty" },
+    /* Failures: utility / inet */
+    { 111, KNOWN_FAILURE, "Inet_LnaOf() stub returns 0" },
+    { 112, KNOWN_FAILURE, "Inet_NetOf() stub returns 0" },
+    { 113, KNOWN_FAILURE, "Inet_MakeAddr() returns 0 (LnaOf/NetOf broken)" },
+    /* Failures: descriptor / errno */
+    { 116, KNOWN_FAILURE, "Dup2Socket() returns 0 instead of target fd" },
+    { 125, KNOWN_FAILURE, "stale errno not replaced by ECONNREFUSED" },
+    { 126, KNOWN_FAILURE, "stale errno causes connect() EBADF" },
+    { 128, KNOWN_FAILURE, "DTABLESIZE GET returns 0, can't test SET" },
+    /* Failures: stale errno collateral (flaky) */
+    { 12, KNOWN_FAILURE, "connect() stale errno causes ECONNREFUSED" },
+    { 15, KNOWN_FAILURE, "accept() stale errno causes EWOULDBLOCK" },
+    { 33, KNOWN_FAILURE, "recv() stale errno causes EWOULDBLOCK" },
+    { 35, KNOWN_FAILURE, "send() after peer close gets wrong errno" },
+    { 52, KNOWN_FAILURE, "SO_ERROR not set after failed connect (stale errno)" },
+    { 55, KNOWN_FAILURE, "IoctlSocket(FIONBIO) errno not set (stale errno)" },
+};
+
 /* ---- Amiberry bsdsocket emulation (verified against UAE 8.0.0) ---- */
 
 static const struct known_entry amiberry_entries[] = {
-    /* Failures: tests run but produce wrong results */
-    { 49, KNOWN_FAILURE, "SO_RCVTIMEO set/get roundtrip fails" },
-    { 50, KNOWN_FAILURE, "SO_SNDTIMEO set/get roundtrip fails" },
-    { 81, KNOWN_FAILURE, "SO_EVENTMASK fires spurious event on idle socket" },
-    { 83, KNOWN_FAILURE, "SO_EVENTMASK FD_CLOSE not delivered on peer disconnect" },
-    { 93, KNOWN_FAILURE, "getservbyname() unknown service not returning NULL" },
-    { 94, KNOWN_FAILURE, "getservbyport() returns wrong service name" },
-    { 98, KNOWN_FAILURE, "gethostname() returns empty string" },
-    { 116, KNOWN_FAILURE, "Dup2Socket() to specific slot not implemented" },
-    { 126, KNOWN_FAILURE, "stale errno causes connect() EBADF" },
+    { 81, KNOWN_FAILURE, "SO_EVENTMASK fires spurious event on idle socket (flaky)" },
 };
 
 /* ---- WinUAE bsdsocket emulation (verified against UAE 6.0.2) ---- */
@@ -98,6 +133,12 @@ static const struct stack_profile profiles[] = {
         "Roadshow",
         roadshow_entries,
         sizeof(roadshow_entries) / sizeof(roadshow_entries[0])
+    },
+    {
+        "UAE 7.1.1",
+        "Amiberry 7.1.1",
+        amiberry_711_entries,
+        sizeof(amiberry_711_entries) / sizeof(amiberry_711_entries[0])
     },
     {
         "UAE 8.0.0",

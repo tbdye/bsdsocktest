@@ -33,6 +33,112 @@ are minor edge cases that do not affect normal application behavior.
 
 ---
 
+## Amiberry 7.1.1 bsdsocket emulation (tested against UAE 7.1.1)
+
+Version string: `UAE 7.1.1` via `SBTC_RELEASESTRPTR`. This is the current
+stable release (Amiberry 7.1.1 Debian package). The version tracks the
+Amiberry release version (`project(amiberry VERSION X.Y.Z)` in
+CMakeLists.txt).
+
+The bsdsocket emulation intercepts Amiga socket library calls and maps them
+to host-side socket operations. It does not use SANA-II or any NIC-level
+emulation. Enable with `bsdsocket_emu=true` in the .uae configuration.
+
+Note that fixes for all issues listed below have been submitted and merged
+upstream. They will ship in the next Amiberry release.
+
+### Crashes (9)
+
+These operations cause the emulator to `exit(1)`. The test suite skips them
+to avoid killing the emulator process.
+
+| Test | Description | Root Cause |
+|-----:|-------------|------------|
+| 70 | WaitSelect(): >64 descriptors | Internal fd mapping array hardcoded to 64 entries. `nfds > 64` causes out-of-bounds access. Also triggered by `SBTC_DTABLESIZE SET` (test 78 guards against this). |
+| 79 | SO_EVENTMASK FD_READ: signal on data arrival | Setting `SO_EVENTMASK` via `setsockopt()` starts an event monitor thread that immediately causes `exit(1)`. |
+| 80 | SO_EVENTMASK FD_CONNECT: signal on connect | Same as test 79. |
+| 81 | SO_EVENTMASK: no spurious events on idle socket | Same as test 79. |
+| 82 | SO_EVENTMASK FD_ACCEPT: signal on incoming | Same as test 79. |
+| 83 | SO_EVENTMASK FD_CLOSE: signal on peer disconnect | Same as test 79. |
+| 84 | GetSocketEvents(): event consumed after retrieval | Same as test 79. |
+| 85 | GetSocketEvents(): round-robin across sockets | Same as test 79. |
+| 87 | WaitSelect + signals: stress test (50 iterations) | Same as test 79. |
+
+### Failures (22)
+
+These tests run but produce incorrect results.
+
+#### Stale errno (8 tests)
+
+The emulation's worker thread does not clear `sb_errno` on success, so a
+stale error value from a prior operation persists and contaminates
+subsequent calls. This is the root cause of 8 failures, 6 of which are
+intermittent collateral damage.
+
+Deterministic:
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 125 | SBTC_ERRNOLONGPTR test | Stale EBADF not replaced by ECONNREFUSED after connect to closed port. `second=9 (expected 61)`. |
+| 126 | connect(): not affected by stale errno | `connect()` returns -1/EBADF when errno contains a stale value from a prior failed call. The worker thread reads `sb_errno` as input to determine the return value. |
+
+Intermittent (depend on prior test execution order):
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 12 | connect() to closed port | Reports stale errno instead of ECONNREFUSED. |
+| 15 | accept() on non-blocking socket | Reports stale errno instead of EWOULDBLOCK. |
+| 33 | recv() on empty non-blocking socket | Reports stale errno instead of EWOULDBLOCK. |
+| 35 | send() after peer close | Stale errno prevents EPIPE/ECONNRESET detection. `1 attempts without error, last errno: 0`. |
+| 52 | SO_ERROR after failed connect | `getsockopt(SO_ERROR)` returns 0 instead of the pending error. Stale errno contaminates the non-blocking connect path. |
+| 55 | IoctlSocket(FIONBIO) | Errno shows 0 after expected success (should show EINPROGRESS=36 from the prior non-blocking set). |
+
+#### sendmsg/recvmsg (2 tests)
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 31 | sendmsg(): single iovec | `host_sendto()` uses `get_real_address(msg)` instead of `realpt` for `sb->buf` -- when called from sendmsg with msg=0, sends from Amiga address 0. |
+| 32 | recvmsg(): scatter-gather (multiple iovecs) | `bsdsocklib_recvmsg()` uses `ftable[sd-1]` with 0-based sd -- off-by-one in MSG_TRUNC detection. |
+
+#### Socket options (2 tests)
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 49 | SO_RCVTIMEO: set receive timeout | `setsockopt()` succeeds but `getsockopt()` fails with EINVAL. Amiga passes 8-byte `struct timeval` (optlen=8) but host kernel on 64-bit expects `sizeof(struct timeval)=16`. |
+| 50 | SO_SNDTIMEO: set send timeout | Same as test 49. |
+
+#### WaitSelect / descriptor table (3 tests)
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 63 | WaitSelect(): all NULL fdsets + timeout = delay | Returns immediately (elapsed 0ms) instead of honoring the timeout as a pure delay. |
+| 78 | SocketBaseTags(SBTC_DTABLESIZE): get/set table size | `SBTM_GETREF(SBTC_DTABLESIZE)` returns 0 instead of 64. `getdtablesize()` correctly returns 64 via a separate code path (test 127 passes). SET is not tested because it would crash (guarded by GET check). |
+| 128 | getdtablesize(): reflects SBTC_DTABLESIZE change | Cannot be tested because the prerequisite SBTC_DTABLESIZE GET returns 0 (same underlying bug as test 78). |
+
+#### DNS / name resolution (3 tests)
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 93 | getservbyname(): unknown service returns NULL | Returns stale `sb->servent` pointer instead of NULL. Prior allocation not freed/cleared. |
+| 94 | getservbyport(): port 21/"tcp" -> "ftp" | Returns "http" instead of "ftp". Amiga network-byte-order port not converted via `htons()` before host lookup. |
+| 98 | gethostname(): retrieve hostname | Returns empty string. Logic reversed: reads FROM Amiga memory instead of writing the hostname TO it. |
+
+#### Address utilities (3 tests)
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 111 | Inet_LnaOf(): extract host part | Returns 0x000000 instead of 0x010203 for address 10.1.2.3. The function is a stub. |
+| 112 | Inet_NetOf(): extract network part | Returns 0x00 instead of 0x0a for address 10.1.2.3. The function is a stub. |
+| 113 | Inet_MakeAddr(): round-trip with LnaOf/NetOf | Returns 0x00000000. Broken because `Inet_LnaOf()` and `Inet_NetOf()` both return 0. |
+
+#### Descriptor transfer (1 test)
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 116 | Dup2Socket(fd, target): duplicate to specific slot | Returns 0 instead of target fd. The `target` parameter is ignored; behaves like `Dup2Socket(fd, -1)`. Also missing return -1 on bounds check failure. |
+
+---
+
 ## Amiberry bsdsocket emulation (tested against UAE 8.0.0)
 
 Version string: `UAE 8.0.0` via `SBTC_RELEASESTRPTR`. The version tracks
@@ -43,69 +149,14 @@ The bsdsocket emulation intercepts Amiga socket library calls and maps them
 to host-side socket operations. It does not use SANA-II or any NIC-level
 emulation. Enable with `bsdsocket_emu=true` in the .uae configuration.
 
-### Crashes (1)
+Amiberry 8.0.0 (development master) includes fixes for all 31 issues found
+in 7.1.1. One intermittent issue remains.
 
-These operations cause the emulator to `exit(1)`. The test suite skips them
-to avoid killing the emulator process.
-
-| Test | Description | Root Cause |
-|-----:|-------------|------------|
-| 70 | WaitSelect(): >64 descriptors | Internal fd mapping array appears hardcoded to 64 entries. Passing `nfds > 64` causes an out-of-bounds access leading to `exit(1)`. Also triggered by `SBTC_DTABLESIZE SET` (test 78 guards against this). |
-
-### Failures (16)
-
-These tests run but produce incorrect results.
-
-#### Unimplemented functions
+### Remaining issues (1)
 
 | Test | Description | Detail |
 |-----:|-------------|--------|
-| 31 | sendmsg()/recvmsg(): single iovec | `sendmsg()` returns -1. The scatter-gather message API is not implemented. |
-| 32 | sendmsg()/recvmsg(): scatter-gather (multiple iovecs) | `recvmsg()` returns -1. Same as test 31. |
-| 116 | Dup2Socket(fd, target): duplicate to specific slot | `Dup2Socket(fd, 10)` returns fd 0 instead of target slot 10. The `target` parameter is ignored; behaves like `Dup2Socket(fd, -1)`. |
-
-#### Socket options
-
-| Test | Description | Detail |
-|-----:|-------------|--------|
-| 49 | SO_RCVTIMEO: set receive timeout | `setsockopt()` accepts the value but `getsockopt()` does not return it. The timeout is also not enforced on blocking `recv()`. |
-| 50 | SO_SNDTIMEO: set send timeout | Same as test 49 but for send timeouts. |
-
-#### Signal / event notification
-
-| Test | Description | Detail |
-|-----:|-------------|--------|
-| 81 | SO_EVENTMASK: no spurious events on idle socket | `GetSocketEvents()` returns a spurious event on a socket with no activity. A socket with `SO_EVENTMASK` set but no actual I/O must not generate events. |
-| 83 | SO_EVENTMASK FD_CLOSE: signal on peer disconnect | The `FD_CLOSE` event signal is not delivered when the remote peer closes the connection. `GetSocketEvents()` does not report the close event. |
-
-#### WaitSelect / descriptor table
-
-| Test | Description | Detail |
-|-----:|-------------|--------|
-| 78 | SocketBaseTags(SBTC_DTABLESIZE): get/set table size | `SBTM_GETVAL(SBTC_DTABLESIZE)` returns 0 instead of 64. Note: `getdtablesize()` correctly returns 64 (test 127), indicating a separate working code path. `SBTM_SETVAL(SBTC_DTABLESIZE)` crashes the emulator (guarded by the GET check). |
-| 128 | getdtablesize(): reflects SBTC_DTABLESIZE change | Cannot be tested because the prerequisite SBTC_DTABLESIZE GET returns 0 (same underlying bug as test 78). |
-
-#### DNS / name resolution
-
-| Test | Description | Detail |
-|-----:|-------------|--------|
-| 93 | getservbyname(): unknown service returns NULL | Returns a non-NULL result for a bogus service name instead of NULL. |
-| 94 | getservbyport(): port 21/"tcp" -> "ftp" | Returns "http" instead of "ftp" for port 21. The emulation may have a static/incorrect service mapping. |
-| 98 | gethostname(): retrieve hostname | Returns success (rc=0) but the hostname string is empty. |
-
-#### Address utilities
-
-| Test | Description | Detail |
-|-----:|-------------|--------|
-| 111 | Inet_LnaOf(): extract host part | Returns 0x000000 instead of 0x010203 for address 10.1.2.3. The function appears to be a stub. |
-| 112 | Inet_NetOf(): extract network part | Returns 0x00 instead of 0x0a for address 10.1.2.3. Same as test 111. |
-| 113 | Inet_MakeAddr(): round-trip with LnaOf/NetOf | Returns 0x00000000 instead of 0x0a010203. Broken because `Inet_LnaOf()` and `Inet_NetOf()` both return 0. |
-
-#### Errno handling
-
-| Test | Description | Detail |
-|-----:|-------------|--------|
-| 126 | connect(): not affected by stale errno | `connect()` intermittently returns `EBADF` when errno contains a stale error value from a prior operation. POSIX specifies that errno is only meaningful after a function returns an error indication; it must not be read as input by subsequent calls. The failure is intermittent, suggesting a race condition in the emulation's asynchronous socket processing. |
+| 81 | SO_EVENTMASK: no spurious events on idle socket | `GetSocketEvents()` intermittently returns a spurious event fd on a socket with no activity. A one-shot guard and `getpeername()` check resolved the issue in most cases, but under certain timing conditions a delayed event from a prior test can still leak through. Flaky -- passes on most runs. |
 
 ---
 
