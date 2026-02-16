@@ -50,25 +50,16 @@ static const struct known_entry roadshow_entries[] = {
 /* ---- Amiberry bsdsocket emulation (verified against UAE 8.0.0) ---- */
 
 static const struct known_entry amiberry_entries[] = {
-    /* Crashes: exercising these operations causes exit(1) */
-    { 70, KNOWN_CRASH,   "WaitSelect >64 fds crashes emulator" },
     /* Failures: tests run but produce wrong results */
-    { 31, KNOWN_FAILURE, "sendmsg() not implemented" },
-    { 32, KNOWN_FAILURE, "recvmsg() not implemented" },
     { 49, KNOWN_FAILURE, "SO_RCVTIMEO set/get roundtrip fails" },
     { 50, KNOWN_FAILURE, "SO_SNDTIMEO set/get roundtrip fails" },
-    { 78, KNOWN_FAILURE, "SBTC_DTABLESIZE GET returns 0" },
     { 81, KNOWN_FAILURE, "SO_EVENTMASK fires spurious event on idle socket" },
     { 83, KNOWN_FAILURE, "SO_EVENTMASK FD_CLOSE not delivered on peer disconnect" },
     { 93, KNOWN_FAILURE, "getservbyname() unknown service not returning NULL" },
     { 94, KNOWN_FAILURE, "getservbyport() returns wrong service name" },
     { 98, KNOWN_FAILURE, "gethostname() returns empty string" },
-    { 111, KNOWN_FAILURE, "Inet_LnaOf() returns 0" },
-    { 112, KNOWN_FAILURE, "Inet_NetOf() returns 0" },
-    { 113, KNOWN_FAILURE, "Inet_MakeAddr() returns 0 (LnaOf/NetOf broken)" },
     { 116, KNOWN_FAILURE, "Dup2Socket() to specific slot not implemented" },
     { 126, KNOWN_FAILURE, "stale errno causes connect() EBADF" },
-    { 128, KNOWN_FAILURE, "SBTC_DTABLESIZE GET returns 0" },
 };
 
 /* ---- WinUAE bsdsocket emulation (verified against UAE 6.0.2) ---- */
