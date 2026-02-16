@@ -9,8 +9,9 @@
  *   KNOWN_CRASH   — test would crash the emulator; must be skipped
  *
  * Matching: the detected version string (e.g. "UAE 8.0.0") is compared
- * against each profile's match_version using exact string match.
- * Unrecognized stacks get no annotations.
+ * against each profile's match_version using prefix match (strncmp).
+ * This handles version strings with trailing metadata such as
+ * "Roadshow 4.364 (1.9.2023)".  Unrecognized stacks get no annotations.
  */
 
 #include "known_failures.h"
@@ -32,13 +33,13 @@ struct known_entry {
 };
 
 struct stack_profile {
-    const char *match_version;      /* exact match against version string */
+    const char *match_version;      /* prefix match against version string */
     const char *stack_name;         /* display name */
     const struct known_entry *entries;
     int entry_count;
 };
 
-/* ---- Roadshow (verified against 4.364) ---- */
+/* ---- Roadshow (verified against 4.347 and 4.364) ---- */
 
 static const struct known_entry roadshow_entries[] = {
     { 27, KNOWN_FAILURE, "recv(MSG_OOB) returns EINVAL" },
@@ -127,7 +128,7 @@ static const struct known_entry winuae_entries[] = {
 
 static const struct stack_profile profiles[] = {
     {
-        "Roadshow 4.364",
+        "Roadshow",
         "Roadshow",
         roadshow_entries,
         sizeof(roadshow_entries) / sizeof(roadshow_entries[0])
@@ -168,7 +169,8 @@ void known_init(const char *version_string)
         return;
 
     for (i = 0; i < NUM_PROFILES; i++) {
-        if (strcmp(version_string, profiles[i].match_version) == 0) {
+        if (strncmp(version_string, profiles[i].match_version,
+                    strlen(profiles[i].match_version)) == 0) {
             active_profile = &profiles[i];
             return;
         }
