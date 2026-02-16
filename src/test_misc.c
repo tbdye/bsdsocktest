@@ -4,7 +4,7 @@
  * Tests: getdtablesize, syslog, CloseSocket after shutdown,
  *        open max sockets.
  *
- * 5 tests (126-130), port offsets 140-159.
+ * 5 tests (127-131), port offsets 140-159.
  */
 
 #include "tap.h"
@@ -30,7 +30,7 @@ void run_misc_tests(void)
 
     /* ---- getdtablesize ---- */
 
-    /* 126. getdtablesize_default */
+    /* 127. getdtablesize_default */
     dtsize = getdtablesize();
     tap_ok(dtsize >= 64,
            "getdtablesize(): default descriptor table size [AmiTCP]");
@@ -38,26 +38,36 @@ void run_misc_tests(void)
 
     CHECK_CTRLC();
 
-    /* 127. getdtablesize_after_set */
+    /* 128. getdtablesize_after_set */
     orig_dtsize = 0;
     SocketBaseTags(SBTM_GETREF(SBTC_DTABLESIZE), (ULONG)&orig_dtsize,
                    TAG_DONE);
-    new_dtsize = orig_dtsize + 64;
-    SocketBaseTags(SBTM_SETVAL(SBTC_DTABLESIZE), new_dtsize, TAG_DONE);
-    dtsize = getdtablesize();
-    tap_ok(dtsize >= new_dtsize,
-           "getdtablesize(): reflects SBTC_DTABLESIZE change [AmiTCP]");
-    tap_diagf("  before=%ld, requested=%ld, getdtablesize=%ld",
-              (long)orig_dtsize, (long)new_dtsize, (long)dtsize);
-    /* Restore (may not reduce) */
-    if (orig_dtsize > 0)
-        SocketBaseTags(SBTM_SETVAL(SBTC_DTABLESIZE), orig_dtsize, TAG_DONE);
+    if (orig_dtsize < 64) {
+        /* GET returned broken value — don't attempt SET which may crash
+         * (UAE emulation's SBTC_DTABLESIZE SET causes exit code 1) */
+        tap_ok(0,
+               "getdtablesize(): reflects SBTC_DTABLESIZE change [AmiTCP]");
+        tap_diagf("  GET returned %ld (expected >= 64), skipping SET",
+                  (long)orig_dtsize);
+    } else {
+        new_dtsize = orig_dtsize + 64;
+        SocketBaseTags(SBTM_SETVAL(SBTC_DTABLESIZE), new_dtsize, TAG_DONE);
+        dtsize = getdtablesize();
+        tap_ok(dtsize >= new_dtsize,
+               "getdtablesize(): reflects SBTC_DTABLESIZE change [AmiTCP]");
+        tap_diagf("  before=%ld, requested=%ld, getdtablesize=%ld",
+                  (long)orig_dtsize, (long)new_dtsize, (long)dtsize);
+        /* Restore (may not reduce) */
+        if (orig_dtsize > 0)
+            SocketBaseTags(SBTM_SETVAL(SBTC_DTABLESIZE), orig_dtsize,
+                           TAG_DONE);
+    }
 
     CHECK_CTRLC();
 
     /* ---- syslog ---- */
 
-    /* 128. syslog_no_crash */
+    /* 129. syslog_no_crash */
     /* The syslog() convenience macro is broken in this SDK version
      * (_sfdc_vararg undefined). Call vsyslog directly with a manual
      * argument array matching AmigaOS varargs convention (ULONG[]). */
@@ -74,7 +84,7 @@ void run_misc_tests(void)
 
     /* ---- CloseSocket after shutdown ---- */
 
-    /* 129. closesocket_after_shutdown */
+    /* 130. closesocket_after_shutdown */
     port = get_test_port(140);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -97,7 +107,7 @@ void run_misc_tests(void)
 
     /* ---- Open max sockets ---- */
 
-    /* 130. open_max_sockets */
+    /* 131. open_max_sockets */
     dtsize = getdtablesize();
     for (i = 0; i < 256; i++)
         fds[i] = -1;

@@ -4,7 +4,7 @@
  * Tests: raw socket creation, ICMP echo request/reply, RTT measurement,
  *        large payload, multi-ping, timeout on non-routable address.
  *
- * 5 tests (131-135).
+ * 5 tests (132-136).
  */
 
 #include "tap.h"
@@ -176,7 +176,7 @@ void run_icmp_tests(void)
     }
     safe_close(rawfd);
 
-    /* 131. icmp_loopback */
+    /* 132. icmp_loopback */
     rtt = icmp_ping(htonl(INADDR_LOOPBACK), 56, 1);
     tap_ok(rtt > 0, "ICMP echo: loopback 127.0.0.1 [RFC 792]");
     if (rtt > 0) {
@@ -198,7 +198,7 @@ void run_icmp_tests(void)
         tap_skip("host helper not connected");
         CHECK_CTRLC();
     } else {
-        /* 132. icmp_network */
+        /* 133. icmp_network */
         rtt = icmp_ping(helper_addr(), 56, 2);
         tap_ok(rtt > 0, "ICMP echo: network host [RFC 792]");
         if (rtt > 0) {
@@ -213,7 +213,7 @@ void run_icmp_tests(void)
 
         CHECK_CTRLC();
 
-        /* 133. icmp_large_payload */
+        /* 134. icmp_large_payload */
         rtt = icmp_ping(helper_addr(), 1024, 3);
         tap_ok(rtt > 0, "ICMP echo: 1024-byte payload [RFC 792]");
         if (rtt > 0)
@@ -224,7 +224,7 @@ void run_icmp_tests(void)
 
         CHECK_CTRLC();
 
-        /* 134. icmp_multi_ping */
+        /* 135. icmp_multi_ping */
         success = 0;
         rtt_min = 0x7FFFFFFF;
         rtt_max = 0;
@@ -252,7 +252,7 @@ void run_icmp_tests(void)
 
     CHECK_CTRLC();
 
-    /* 135. icmp_timeout */
+    /* 136. icmp_timeout */
     rtt = icmp_ping(inet_addr((STRPTR)"192.0.2.1"), 56, 99);
     if (rtt == 0) {
         tap_ok(1, "ICMP echo: timeout on unreachable host [RFC 792]");

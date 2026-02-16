@@ -268,6 +268,12 @@ void tap_init(const char *bsdlib_version, const char *log_path)
     if (!logfp && !is_nil)
         printf("Warning: could not open log file %s\n", log_path);
 
+    /* Unbuffered: every write hits disk immediately. Essential for
+     * crash diagnosis — if the stack under test crashes the emulator,
+     * the log shows exactly which test was last completed. */
+    if (logfp)
+        setbuf(logfp, NULL);
+
     /* Log: full TAP header */
     log_puts("TAP version 12");
     log_printf("# bsdsocktest %s\n", BSDSOCKTEST_VERSION);

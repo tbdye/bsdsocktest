@@ -15,9 +15,16 @@
  * If the stack is not recognized, no failures are marked as known. */
 void known_init(const char *version_string);
 
-/* Check if a given test number is a known failure for the current stack.
- * Returns the reason string if known, NULL if not. */
+/* Check if a given test number is a known issue (failure or crash)
+ * for the current stack and version. Returns the reason string if
+ * known, NULL if not. Used by the TAP framework to annotate output. */
 const char *known_check(int test_number);
+
+/* Check if a given test number would crash the current stack.
+ * Returns the reason string if so, NULL if safe to run.
+ * Test code calls this before exercising crash-prone operations.
+ * When non-NULL, emit tap_ok(0, desc) + diagnostic and skip the test. */
+const char *known_crash(int test_number);
 
 /* Get the detected stack name (e.g. "Roadshow"), or "Unknown" if
  * not recognized. For display purposes. */

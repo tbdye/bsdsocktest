@@ -3,7 +3,7 @@
 ## Introduction
 
 This document is a test-by-test reference for **bsdsocktest**, an Amiga
-bsdsocket.library conformance test suite. It covers all 141 tests organized
+bsdsocket.library conformance test suite. It covers all 142 tests organized
 into 12 categories, with each entry documenting what the test validates, how
 it works, and what a conforming implementation should do.
 
@@ -27,9 +27,8 @@ Each test entry contains the following fields:
 - **Methodology** --- What the test code does, step by step. Describes socket
   setup, operations performed, and the assertion that determines pass or fail.
 - **Expected Result** --- What a conforming implementation returns or does.
-- **Known Issues** --- Per-stack known failures, present only when the test
-  has entries in the known-failures table. These are behavioral limitations of
-  specific stacks, not bugs in the test suite.
+Per-stack known failures and compatibility information are documented
+separately in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ### Test Numbering
 
@@ -48,10 +47,10 @@ ranges are:
 | dns        | 88--104 | 17    |
 | utility    | 105--114| 10    |
 | transfer   | 115--119| 5     |
-| errno      | 120--125| 6     |
-| misc       | 126--130| 5     |
-| icmp       | 131--135| 5     |
-| throughput | 136--141| 6     |
+| errno      | 120--126| 7     |
+| misc       | 127--131| 5     |
+| icmp       | 132--136| 5     |
+| throughput | 137--142| 6     |
 
 ### Standards Tags
 
@@ -546,10 +545,6 @@ is 0xAB.
 **Expected Result:** `recv(MSG_OOB)` returns 1, and the received byte is
 0xAB.
 
-**Known Issues:**
-- *Roadshow:* `recv(MSG_OOB)` returns `EINVAL`. Urgent data is not
-  implemented on Roadshow's loopback path.
-
 ### Test 28 --- sendto()/recvfrom(): UDP datagram loopback
 
 **Category:** sendrecv
@@ -711,12 +706,6 @@ error. Checks whether any attempt returns an error with errno `EPIPE` or
 
 **Expected Result:** `send()` or `recv()` returns -1 with errno set to
 `EPIPE` or `ECONNRESET` within 5 attempts.
-
-**Known Issues:**
-- *Roadshow:* Loopback does not generate RST for closed peer. On Roadshow's
-  loopback path, the peer socket is fully deallocated on `CloseSocket()`, so
-  there is no kernel endpoint left to generate a RST segment. The sends
-  succeed silently.
 
 ### Test 36 --- send()/recv(): simultaneous bidirectional transfer
 
@@ -981,28 +970,26 @@ SO_LINGER)` to read it back. Checks that `setsockopt()` returned 0,
 **Expected Result:** `setsockopt()` returns 0. The read-back `l_onoff` is
 non-zero and `l_linger` is 5.
 
-### Test 49 --- SO_RCVTIMEO: receive timeout fires
+### Test 49 --- SO_RCVTIMEO: set receive timeout
 
 **Category:** sockopt
-**API:** setsockopt(), recv()
+**API:** setsockopt(), getsockopt()
 **Standard:** [FreeBSD setsockopt(2)](https://man.freebsd.org/cgi/man.cgi?query=setsockopt&sektion=2)
 
-**Rationale:** `SO_RCVTIMEO` sets a timeout on receive operations. When the
-timeout expires without data arriving, `recv()` must return an error with
-`EWOULDBLOCK` or `EAGAIN`. This is essential for preventing indefinite
-blocking in applications that cannot use non-blocking I/O.
+**Rationale:** `SO_RCVTIMEO` sets a timeout on receive operations. A conforming
+stack must accept and store the timeout value. Actual enforcement (blocking
+`recv()` returning `EWOULDBLOCK` after the timeout expires) cannot be safely
+tested because stacks that accept the option but don't enforce it will hang
+indefinitely on `recv()`. Enforcement has been validated on Roadshow.
 
-**Methodology:** Creates a TCP loopback connection pair. Sets
-`SO_RCVTIMEO` to 1 second on the server socket via `setsockopt()`. If the
-`setsockopt()` call fails, the test is skipped (the option may not be
-supported). Otherwise, records a timestamp, calls `recv()` on the server
-(no data is sent), and records a second timestamp. Checks that `recv()`
-returned a negative value, that errno is `EWOULDBLOCK` or `EAGAIN`, and that
-the elapsed time is between 500ms and 3000ms (accounting for timer
-imprecision).
+**Methodology:** Creates a TCP socket. Sets `SO_RCVTIMEO` to 1 second via
+`setsockopt()`. If the `setsockopt()` call fails, the test fails (the option
+should be supported). Otherwise, clears the `timeval` structure, calls
+`getsockopt()` to read back the value, and verifies the returned seconds and
+microseconds match the set values.
 
-**Expected Result:** `recv()` returns -1 with errno `EWOULDBLOCK` or
-`EAGAIN`. The elapsed time is approximately 1 second.
+**Expected Result:** `setsockopt()` returns 0. The read-back `tv_secs` is 1
+and `tv_micro` is 0.
 
 ### Test 50 --- SO_SNDTIMEO: set send timeout
 
@@ -1550,11 +1537,6 @@ startup).
 
 **Expected Result:** The returned errno pointer is non-NULL.
 
-**Known Issues:**
-- *Roadshow:* `SBTC_ERRNOLONGPTR` GET returns NULL. Roadshow supports
-  setting the errno pointer but does not support reading it back via
-  `SBTM_GETREF`. The tag is SET-only.
-
 ### Test 77 --- SocketBaseTags(SBTC_HERRNOLONGPTR): get h_errno pointer
 
 **Category:** signals
@@ -1570,11 +1552,6 @@ to retrieve the currently registered h_errno pointer. Checks that the
 returned pointer is non-NULL.
 
 **Expected Result:** The returned h_errno pointer is non-NULL.
-
-**Known Issues:**
-- *Roadshow:* `SBTC_HERRNOLONGPTR` GET returns NULL. Roadshow supports
-  setting the h_errno pointer but does not support reading it back via
-  `SBTM_GETREF`. The tag is SET-only.
 
 ### Test 78 --- SocketBaseTags(SBTC_DTABLESIZE): get/set table size
 
@@ -2400,7 +2377,7 @@ Error handling tests covering `Errno()`, `SetErrnoPtr()`, and
 `SocketBaseTags(SBTC_ERRNOLONGPTR)`. These tests validate the
 bsdsocket.library error reporting mechanisms, including the Amiga-specific
 ability to redirect errno writes to variables of different sizes (1, 2,
-or 4 bytes). All 6 tests operate on loopback and require no host helper.
+or 4 bytes). All 7 tests operate on loopback and require no host helper.
 
 ### Test 120 --- Errno(): correct value after failed operation
 
@@ -2517,6 +2494,28 @@ Restores the original errno pointer via `restore_bsd_errno()`.
 value after each failing operation, and the two error values are
 different.
 
+### Test 126 --- connect(): not affected by stale errno
+
+**Category:** errno
+**API:** connect(), CloseSocket()
+**Standard:** [POSIX --- errno](https://pubs.opengroup.org/onlinepubs/9699919799/functions/errno.html)
+
+**Rationale:** POSIX specifies that errno is only meaningful after a function
+that returns an error indication. A stale errno value from a prior failed
+operation must not influence the outcome of subsequent calls. This test
+verifies that `connect()` succeeds on a valid socket even when errno contains
+`EBADF` from a prior `CloseSocket(-1)` call.
+
+**Methodology:** Creates a loopback listener on a test port. Creates a TCP
+socket for connecting. Calls `CloseSocket(-1)` to force errno to `EBADF`.
+Calls `Errno()` to confirm the stale state is non-zero.
+Calls `connect()` on the valid socket to the loopback listener. Checks that
+`connect()` returns 0 (success). Logs the stale errno value, the connect
+return code, and the post-connect errno.
+
+**Expected Result:** `connect()` returns 0 (success) regardless of stale
+errno state.
+
 ---
 
 ## Category: misc
@@ -2527,7 +2526,7 @@ tests validate peripheral library functions and edge cases in socket
 lifecycle management. All 5 tests operate on loopback and require no
 host helper.
 
-### Test 126 --- getdtablesize(): default descriptor table size
+### Test 127 --- getdtablesize(): default descriptor table size
 
 **Category:** misc
 **API:** getdtablesize()
@@ -2544,7 +2543,7 @@ diagnostic.
 
 **Expected Result:** `getdtablesize()` returns a value of 64 or greater.
 
-### Test 127 --- getdtablesize(): reflects SBTC_DTABLESIZE change
+### Test 128 --- getdtablesize(): reflects SBTC_DTABLESIZE change
 
 **Category:** misc
 **API:** getdtablesize()
@@ -2565,7 +2564,7 @@ afterward.
 **Expected Result:** `getdtablesize()` returns a value greater than or
 equal to the newly requested table size.
 
-### Test 128 --- syslog(): does not crash (canary test)
+### Test 129 --- syslog(): does not crash (canary test)
 
 **Category:** misc
 **API:** vsyslog()
@@ -2585,7 +2584,7 @@ test unconditionally passes if the call returns without crashing.
 
 **Expected Result:** The `vsyslog()` call returns without crashing.
 
-### Test 129 --- CloseSocket(): succeeds after prior shutdown
+### Test 130 --- CloseSocket(): succeeds after prior shutdown
 
 **Category:** misc
 **API:** CloseSocket()
@@ -2606,7 +2605,7 @@ descriptors.
 **Expected Result:** `CloseSocket()` returns 0 on a descriptor that has
 already been fully shut down.
 
-### Test 130 --- socket(): open dtablesize-1 descriptors successfully
+### Test 131 --- socket(): open dtablesize-1 descriptors successfully
 
 **Category:** misc
 **API:** socket()
@@ -2637,9 +2636,9 @@ ability to create `SOCK_RAW` / `IPPROTO_ICMP` sockets, construct and
 send ICMP echo requests, and receive matching echo replies. RTT
 measurements are informational benchmarks, not conformance assertions.
 All 5 tests are skipped if the stack does not support raw ICMP sockets.
-Tests 132--134 additionally require the host helper for network targets.
+Tests 133--135 additionally require the host helper for network targets.
 
-### Test 131 --- ICMP echo: loopback 127.0.0.1
+### Test 132 --- ICMP echo: loopback 127.0.0.1
 
 **Category:** icmp
 **API:** socket(), sendto(), recv()
@@ -2662,7 +2661,7 @@ sequence number. Returns the round-trip time in microseconds measured via
 **Expected Result:** A matching ICMP echo reply is received within 3
 seconds. The test passes if the measured RTT is positive.
 
-### Test 132 --- ICMP echo: network host
+### Test 133 --- ICMP echo: network host
 
 **Category:** icmp
 **API:** socket(), sendto(), recv()
@@ -2683,7 +2682,7 @@ and a `tap_note`.
 **Expected Result:** A matching ICMP echo reply is received from the
 network host within 3 seconds.
 
-### Test 133 --- ICMP echo: 1024-byte payload
+### Test 134 --- ICMP echo: 1024-byte payload
 
 **Category:** icmp
 **API:** socket(), sendto(), recv()
@@ -2704,7 +2703,7 @@ mismatch offset as a diagnostic.
 **Expected Result:** A matching ICMP echo reply is received with
 intact 1024-byte payload data.
 
-### Test 134 --- ICMP echo: multiple pings reliability
+### Test 135 --- ICMP echo: multiple pings reliability
 
 **Category:** icmp
 **API:** socket(), sendto(), recv()
@@ -2726,7 +2725,7 @@ count and RTT statistics as diagnostics and a `tap_note`.
 **Expected Result:** At least 4 out of 5 ICMP echo replies are received
 from the network host.
 
-### Test 135 --- ICMP echo: timeout on unreachable host
+### Test 136 --- ICMP echo: timeout on unreachable host
 
 **Category:** icmp
 **API:** socket(), sendto(), WaitSelect()
@@ -2755,10 +2754,10 @@ TCP and UDP throughput benchmark tests measuring data transfer rates on
 loopback and across the network. These are performance measurements, not
 conformance assertions --- the tests pass as long as data was
 successfully transferred. Throughput numbers are reported as informational
-TAP diagnostics and notes. Network tests (137, 139, 141) require the
+TAP diagnostics and notes. Network tests (138, 140, 142) require the
 host helper.
 
-### Test 136 --- Throughput: TCP loopback send/recv
+### Test 137 --- Throughput: TCP loopback send/recv
 
 **Category:** throughput
 **API:** send(), recv(), WaitSelect()
@@ -2783,7 +2782,7 @@ least 90% of the target bytes were received.
 **Expected Result:** At least 460 KB (90% of 512 KB) is received by the
 server. The reported throughput in KB/s is informational.
 
-### Test 137 --- Throughput: TCP via network to host
+### Test 138 --- Throughput: TCP via network to host
 
 **Category:** throughput
 **API:** send()
@@ -2803,7 +2802,7 @@ if any data was successfully sent.
 **Expected Result:** At least some data is sent to the host helper's
 TCP sink. The reported throughput in KB/s is informational.
 
-### Test 138 --- Throughput: UDP loopback
+### Test 139 --- Throughput: UDP loopback
 
 **Category:** throughput
 **API:** sendto(), recv(), WaitSelect()
@@ -2827,7 +2826,7 @@ if at least one datagram was received.
 **Expected Result:** At least one UDP datagram is received. The reported
 throughput, loss percentage, and datagram counts are informational.
 
-### Test 139 --- Throughput: UDP via network to host
+### Test 140 --- Throughput: UDP via network to host
 
 **Category:** throughput
 **API:** sendto(), recv(), WaitSelect()
@@ -2850,7 +2849,7 @@ one echoed reply was received.
 **Expected Result:** At least one echoed UDP datagram is received. The
 reported throughput and loss percentage are informational.
 
-### Test 140 --- Throughput: TCP sustained 1MB+ loopback
+### Test 141 --- Throughput: TCP sustained 1MB+ loopback
 
 **Category:** throughput
 **API:** send(), recv(), WaitSelect()
@@ -2863,7 +2862,7 @@ stalls, or buffer management issues that shorter transfers might miss.
 
 **Methodology:** Creates a TCP loopback connection and sets both
 endpoints to non-blocking mode. Transfers 1 MB from client to server
-using the same `WaitSelect()` event loop as test 136 (8 KB send/recv
+using the same `WaitSelect()` event loop as test 137 (8 KB send/recv
 buffers, 10-second timeout). Divides the transfer into 10 segments of
 100 KB each, recording the elapsed time for each segment at send-side
 boundaries. After the transfer completes, reports overall throughput and
@@ -2875,7 +2874,7 @@ server.
 server. The reported overall and per-segment throughput values are
 informational.
 
-### Test 141 --- Throughput: TCP sustained 1MB+ via network
+### Test 142 --- Throughput: TCP sustained 1MB+ via network
 
 **Category:** throughput
 **API:** send()

@@ -2,14 +2,15 @@
 
 An open-source conformance test suite for Amiga **bsdsocket.library** --- the
 BSD socket API implemented by all Amiga TCP/IP stacks (Roadshow, AmiTCP,
-Miami, Genesis) and emulators (Amiberry, WinUAE). The suite exercises 141
+Miami, Genesis) and emulators (Amiberry, WinUAE). The suite exercises 142
 tests across 12 categories covering socket lifecycle, data transfer, async
 I/O, name resolution, descriptor transfer, throughput benchmarks, and more.
 Cross-compiled C targeting m68k AmigaOS (68020+).
 
 ## Documentation
 
-- [docs/TESTS.md](docs/TESTS.md) --- Per-test reference covering all 141 tests: what each validates, methodology, and expected behavior
+- [docs/TESTS.md](docs/TESTS.md) --- Per-test reference covering all 142 tests: what each validates, methodology, and expected behavior
+- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) --- Known issues per TCP/IP stack, with root cause analysis and fix priorities
 - [docs/AMITCP_API.md](docs/AMITCP_API.md) --- Programmer's reference for the Amiga bsdsocket.library API, focusing on differences from standard BSD sockets
 - [host/README.md](host/README.md) --- Setup and usage guide for the host helper script required by network-tier tests
 
@@ -107,11 +108,11 @@ bsdsocktest LIST                       ; Show available categories
 | `dns`         |    17 | both      | Name resolution: gethostbyname/addr, getservby\*, getprotoby\* |
 | `utility`     |    10 | loopback  | Address utilities: Inet\_NtoA, inet\_addr, Inet\_LnaOf, Inet\_NetOf |
 | `transfer`    |     5 | loopback  | Descriptor transfer: Dup2Socket, ObtainSocket, ReleaseSocket |
-| `errno`       |     6 | loopback  | Error handling: Errno, SetErrnoPtr, SocketBaseTags errno pointers |
+| `errno`       |     7 | loopback  | Error handling: Errno, SetErrnoPtr, SocketBaseTags errno pointers |
 | `misc`        |     5 | loopback  | Miscellaneous: getdtablesize, syslog, resource limits |
 | `icmp`        |     5 | both      | ICMP echo: raw socket ping, RTT measurement |
 | `throughput`  |     6 | both      | Throughput benchmarks: TCP/UDP loopback and network transfer |
-| **Total**     | **141** | | |
+| **Total**     | **142** | | |
 
 **Tier legend:** "loopback" tests are self-contained (no network needed).
 "both" categories contain a mix of loopback and network tests; network tests
@@ -135,7 +136,7 @@ result.
 The final summary line shows the aggregate:
 
 ```
-Results: 137/137 passed (4 known issues, 4 skipped)
+Results: 138/138 passed (4 known issues, 4 skipped)
 ```
 
 ### Verbose mode
@@ -199,9 +200,9 @@ documentation.
 
 ### Roadshow 1.15 (bsdsocket.library 4.364)
 
-With the host helper connected, all 141 tests are executed:
+With the host helper connected, all 142 tests are executed:
 
-- **137 passed**
+- **138 passed**
 - **4 known issues** (documented stack deviations)
 - **0 unexpected failures**
 

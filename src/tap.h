@@ -8,7 +8,7 @@
 #ifndef BSDSOCKTEST_TAP_H
 #define BSDSOCKTEST_TAP_H
 
-#define BSDSOCKTEST_VERSION "0.1.0"
+#define BSDSOCKTEST_VERSION "0.2.0"
 
 /* Initialize TAP output. Opens log file and writes headers.
  * bsdlib_version: SBTC_RELEASESTRPTR string, or NULL if unavailable.

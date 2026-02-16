@@ -10,6 +10,7 @@
 
 #include "tap.h"
 #include "testutil.h"
+#include "known_failures.h"
 
 #include <proto/bsdsocket.h>
 #include <proto/exec.h>
@@ -415,10 +416,32 @@ void run_waitselect_tests(void)
     CHECK_CTRLC();
 
     /* 70. ws_many_descriptors */
+    {
+        const char *cr = known_crash(70);
+        if (cr) {
+            tap_ok(0, "WaitSelect(): >64 descriptors [AmiTCP]");
+            tap_diagf("  not exercised: %s", cr);
+            goto ws70_done;
+        }
+    }
     dtsize = 0;
     SocketBaseTags(SBTM_GETREF(SBTC_DTABLESIZE), (ULONG)&dtsize, TAG_DONE);
     if (dtsize < 66) {
         SocketBaseTags(SBTM_SETVAL(SBTC_DTABLESIZE), 128, TAG_DONE);
+        /* Verify expansion actually took effect — some emulations
+         * accept the SET but don't expand internal structures,
+         * causing crashes when fds >= 64 are used in WaitSelect */
+        {
+            LONG new_dtsize = 0;
+            SocketBaseTags(SBTM_GETREF(SBTC_DTABLESIZE), (ULONG)&new_dtsize,
+                           TAG_DONE);
+            if (new_dtsize < 66) {
+                tap_skip("dtablesize expansion not supported");
+                tap_diagf("  original: %ld, after SET 128: %ld",
+                          (long)dtsize, (long)new_dtsize);
+                goto ws70_done;
+            }
+        }
     }
     for (i = 0; i < 65; i++)
         fds[i] = -1;
@@ -427,7 +450,10 @@ void run_waitselect_tests(void)
         if (fds[i] < 0)
             break;
     }
-    if (i == 65) {
+    if (i == 65 && fds[64] < 64) {
+        /* All fds fit in default range — test is meaningless */
+        tap_skip("65 sockets opened but highest fd < 64");
+    } else if (i == 65) {
         FD_ZERO(&readfds);
         FD_SET(fds[64], &readfds);
         tv.tv_secs = 0;
@@ -441,6 +467,7 @@ void run_waitselect_tests(void)
         tap_diagf("  opened %d before failure", i);
     }
     close_all(fds, 65);
+ws70_done:
     /* Restore dtablesize if we changed it (may not be reducible) */
     if (dtsize < 66 && dtsize > 0) {
         SocketBaseTags(SBTM_SETVAL(SBTC_DTABLESIZE), dtsize, TAG_DONE);

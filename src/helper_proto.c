@@ -77,6 +77,19 @@ int helper_connect(const char *host)
         return 0;
     }
 
+    /* Workaround: UAE bsdsocket emulation processes socket() asynchronously.
+     * A getsockopt round-trip ensures the fd is fully registered before
+     * connect() attempts to use it.  Without this, connect() intermittently
+     * returns EBADF on the just-created fd. */
+    {
+        LONG optval;
+        LONG optlen = sizeof(optval);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
+        getsockopt(fd, SOL_SOCKET, SO_TYPE, &optval, &optlen);
+#pragma GCC diagnostic pop
+    }
+
     if (connect(fd, (struct sockaddr *)&resolved_addr,
                 sizeof(resolved_addr)) < 0) {
         tap_diagf("  helper_connect: connect failed, errno=%ld",
@@ -91,8 +104,8 @@ int helper_connect(const char *host)
     /* Read OK response */
     rc = recv_line(fd, line, sizeof(line));
     if (rc <= 0 || strcmp(line, "OK") != 0) {
-        tap_diagf("  helper_connect: expected OK, got \"%s\" (rc=%d)",
-                  line, rc);
+        tap_diagf("  helper_connect: expected OK, got \"%s\" (rc=%d, errno=%ld)",
+                  line, rc, (long)get_bsd_errno());
         safe_close(fd);
         return 0;
     }

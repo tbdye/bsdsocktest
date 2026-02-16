@@ -5,7 +5,7 @@
  * Results reported as TAP diagnostics. Tests pass as long as data
  * was transferred; throughput numbers are informational.
  *
- * 6 tests (136-141), port offsets 180-199.
+ * 6 tests (137-142), port offsets 180-199.
  */
 
 #include "tap.h"
@@ -43,7 +43,7 @@ void run_throughput_tests(void)
 
     fill_test_pattern(tp_sbuf, TP_BUFSIZE, 0);
 
-    /* ---- 136. tp_tcp_loopback ---- */
+    /* ---- 137. tp_tcp_loopback ---- */
     port = get_test_port(180);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -105,7 +105,7 @@ void run_throughput_tests(void)
 
     CHECK_CTRLC();
 
-    /* ---- 137. tp_tcp_network ---- */
+    /* ---- 138. tp_tcp_network ---- */
     if (!helper_is_connected()) {
         tap_skip("host helper not connected");
     } else {
@@ -139,7 +139,7 @@ void run_throughput_tests(void)
 
     CHECK_CTRLC();
 
-    /* ---- 138. tp_udp_loopback ---- */
+    /* ---- 139. tp_udp_loopback ---- */
     {
         LONG sock_a, sock_b;
         struct sockaddr_in addr_a, addr_b;
@@ -211,7 +211,7 @@ void run_throughput_tests(void)
 
     CHECK_CTRLC();
 
-    /* ---- 139. tp_udp_network ---- */
+    /* ---- 140. tp_udp_network ---- */
     if (!helper_is_connected()) {
         tap_skip("host helper not connected");
     } else {
@@ -275,7 +275,7 @@ void run_throughput_tests(void)
 
     CHECK_CTRLC();
 
-    /* ---- 140. tp_tcp_sustained_loopback ---- */
+    /* ---- 141. tp_tcp_sustained_loopback ---- */
     port = get_test_port(183);
     listener = make_loopback_listener(port);
     client = make_loopback_client(port);
@@ -378,7 +378,7 @@ void run_throughput_tests(void)
 
     CHECK_CTRLC();
 
-    /* ---- 141. tp_tcp_sustained_network ---- */
+    /* ---- 142. tp_tcp_sustained_network ---- */
     if (!helper_is_connected()) {
         tap_skip("host helper not connected");
     } else {

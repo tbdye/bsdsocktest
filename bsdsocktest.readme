@@ -2,20 +2,20 @@ Short:    Amiga bsdsocket.library conformance test suite
 Uploader: thomas@tfenet.com (Thomas Dye)
 Author:   thomas@tfenet.com (Thomas Dye)
 Type:     comm/tcp
-Version:  1.0
+Version:  0.2.0
 Requires: AmigaOS 2.0+, 68020+, bsdsocket.library compatible TCP/IP stack
 Architecture: m68k-amigaos
 
 bsdsocktest is an open-source conformance test suite for the Amiga
 bsdsocket.library API.  It exercises the BSD socket interface as
 implemented by Amiga TCP/IP stacks (Roadshow, AmiTCP, Miami, Genesis)
-and by emulators (Amiberry, WinUAE).  The suite contains 141 tests
+and by emulators (Amiberry, WinUAE).  The suite contains 142 tests
 across 12 categories, covering socket lifecycle, data transfer, async
 I/O, name resolution, descriptor transfer, and throughput benchmarks.
 
 Features:
 
-  - 141 tests in 12 categories (socket, sendrecv, sockopt, waitselect,
+  - 142 tests in 12 categories (socket, sendrecv, sockopt, waitselect,
     signals, dns, utility, transfer, errno, misc, icmp, throughput)
   - Self-contained loopback tests run without any network
   - Network tests use a Python host helper (included)
@@ -47,7 +47,7 @@ Usage:
 
 Compatibility:
 
-  Tested against Roadshow 4.364: 137 passed, 4 known stack deviations,
+  Tested against Roadshow 4.364: 138 passed, 4 known stack deviations,
   0 unexpected failures.  The known deviations are documented behavioral
   differences (MSG_OOB not supported, loopback RST generation, SET-only
   errno pointer tags with no GET support) and do not indicate bugs in

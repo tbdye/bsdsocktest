@@ -108,6 +108,11 @@ void reset_socket_state(void)
 
     if (cleaned > 0)
         tap_diagf("  reset: closed %d leftover socket(s)", cleaned);
+
+    /* Clear stale errno left by the failed CloseSocket calls above.
+     * Some emulations (UAE) check errno on entry to connect(), so a
+     * leftover EBADF from the cleanup loop causes spurious failures. */
+    bsd_errno = 0;
 }
 
 /* ---- Socket helpers ---- */

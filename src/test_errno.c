@@ -3,7 +3,7 @@
  *
  * Tests: Errno(), SetErrnoPtr (byte/word/long), errno variable update.
  *
- * 6 tests (120-125), no port offsets needed (borrows offset 0).
+ * 7 tests (120-126), port offsets: borrows offset 0.
  */
 
 #include "tap.h"
@@ -130,5 +130,52 @@ void run_errno_tests(void)
         }
 
         restore_bsd_errno();
+    }
+
+    CHECK_CTRLC();
+
+    /* 126. connect_stale_errno — POSIX says errno is only meaningful after
+     * a function that returns an error.  Stale errno from a prior failed
+     * call must not cause a subsequent connect() to fail. */
+    {
+        LONG listener, client, server;
+        struct sockaddr_in laddr;
+        LONG rc;
+
+        listener = make_loopback_listener(get_test_port(0));
+        if (listener < 0) {
+            tap_ok(0, "connect(): not affected by stale errno [POSIX]");
+            tap_diag("  could not create listener");
+        } else {
+            client = make_tcp_socket();
+            if (client < 0) {
+                tap_ok(0, "connect(): not affected by stale errno [POSIX]");
+                tap_diag("  could not create client socket");
+                safe_close(listener);
+            } else {
+                /* Force errno to EBADF */
+                CloseSocket(-1);
+                errno_val = Errno();
+
+                memset(&laddr, 0, sizeof(laddr));
+                laddr.sin_family = AF_INET;
+                laddr.sin_port = htons(get_test_port(0));
+                laddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+                rc = connect(client, (struct sockaddr *)&laddr, sizeof(laddr));
+                tap_ok(rc == 0,
+                       "connect(): not affected by stale errno [POSIX]");
+                tap_diagf("  stale_errno=%ld, connect_rc=%ld, post_errno=%ld",
+                          (long)errno_val, (long)rc, (long)get_bsd_errno());
+
+                if (rc == 0) {
+                    server = accept(listener, NULL, NULL);
+                    if (server >= 0)
+                        safe_close(server);
+                }
+                safe_close(client);
+                safe_close(listener);
+            }
+        }
     }
 }
