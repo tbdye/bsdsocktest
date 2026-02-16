@@ -81,16 +81,16 @@ static const struct known_entry amiberry_entries[] = {
 /* ---- WinUAE bsdsocket emulation (verified against UAE 6.0.2) ---- */
 
 static const struct known_entry winuae_entries[] = {
-    /* Crashes: assumed same as Amiberry until tested without guards */
-    { 70, KNOWN_CRASH,   "WaitSelect >64 fds crashes emulator" },
-    { 79, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 80, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 81, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 82, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 83, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 84, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 85, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 87, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    /* Hangs: SO_EVENTMASK sets up but signal never fires; WaitSelect
+       blocks forever instead of honoring timeout when sigmask is set */
+    { 79, KNOWN_CRASH,   "SO_EVENTMASK hangs (signal never delivered)" },
+    { 80, KNOWN_CRASH,   "SO_EVENTMASK hangs (signal never delivered)" },
+    { 81, KNOWN_CRASH,   "SO_EVENTMASK hangs (signal never delivered)" },
+    { 82, KNOWN_CRASH,   "SO_EVENTMASK hangs (signal never delivered)" },
+    { 83, KNOWN_CRASH,   "SO_EVENTMASK hangs (signal never delivered)" },
+    { 84, KNOWN_CRASH,   "SO_EVENTMASK hangs (signal never delivered)" },
+    { 85, KNOWN_CRASH,   "SO_EVENTMASK hangs (signal never delivered)" },
+    { 87, KNOWN_CRASH,   "SO_EVENTMASK hangs (signal never delivered)" },
     /* Failures: tests run but produce wrong results */
     { 35, KNOWN_FAILURE, "send after peer close returns wrong errno" },
     { 48, KNOWN_FAILURE, "SO_LINGER set/get roundtrip fails" },

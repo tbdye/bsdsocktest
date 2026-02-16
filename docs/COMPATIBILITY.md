@@ -118,31 +118,38 @@ These tests run but produce incorrect results.
 
 ## WinUAE bsdsocket emulation (tested against UAE 6.0.2)
 
-Version string: `UAE 6.0.2` via `SBTC_RELEASESTRPTR`. WinUAE 6.0.2 reports
-its own product version through the same `UAE X.Y.Z` format used by
-Amiberry, but the version numbers are independent.
+Version string: `UAE 6.0.2` via `SBTC_RELEASESTRPTR`. The version number
+reflects the WinUAE product release.
 
-WinUAE and Amiberry share a common bsdsocket emulation codebase origin but
-have diverged. WinUAE passes several tests that Amiberry fails (sendmsg/
-recvmsg, SO_RCVTIMEO/SO_SNDTIMEO, getservbyname, stale errno) and has its
-own unique failures (SO_LINGER, SO_ERROR, WaitSelect nfds).
+The bsdsocket emulation intercepts Amiga socket library calls and maps them
+to host-side socket operations. It does not use SANA-II or any NIC-level
+emulation.
 
-### Crashes (9)
+### Crashes (1)
 
-Assumed same as Amiberry until tested without crash guards. The test suite
-skips these to avoid killing the emulator process.
+| Context | Description | Detail |
+|---------|-------------|--------|
+| `CloseLibrary(SocketBase)` | Emulator terminates during library cleanup | Calling `CloseLibrary()` on an open bsdsocket.library base after normal socket operations causes the emulator process to terminate silently. Test results are not affected (all output is flushed before cleanup), but the emulator is lost. Confirmed by skipping the `CloseLibrary()` call, which eliminates the crash. |
 
-| Test | Description | Root Cause |
-|-----:|-------------|------------|
-| 70 | WaitSelect(): >64 descriptors | See Amiberry test 70. |
-| 79 | SO_EVENTMASK FD_READ: signal on data arrival | See Amiberry test 79. |
-| 80 | SO_EVENTMASK FD_CONNECT: signal on connect | See Amiberry test 79. |
-| 81 | SO_EVENTMASK: no spurious events on idle socket | See Amiberry test 79. |
-| 82 | SO_EVENTMASK FD_ACCEPT: signal on incoming | See Amiberry test 79. |
-| 83 | SO_EVENTMASK FD_CLOSE: signal on peer disconnect | See Amiberry test 79. |
-| 84 | GetSocketEvents(): event consumed after retrieval | See Amiberry test 79. |
-| 85 | GetSocketEvents(): round-robin across sockets | See Amiberry test 79. |
-| 87 | WaitSelect + signals: stress test (50 iterations) | See Amiberry test 79. |
+### Hangs (8)
+
+These tests set `SO_EVENTMASK` via `setsockopt()` and then wait for an
+Amiga signal via `WaitSelect()` with a non-NULL signal mask. The
+`setsockopt()` call succeeds (no error, no crash), but the signal is never
+delivered when the monitored event occurs. `WaitSelect()` with a non-NULL
+signal mask blocks indefinitely instead of honoring the timeout. The test
+suite skips these to avoid hanging.
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 79 | SO_EVENTMASK FD_READ: signal on data arrival | Signal not delivered after `send()` fills receive buffer. |
+| 80 | SO_EVENTMASK FD_CONNECT: signal on connect | Signal not delivered after non-blocking `connect()` completes. |
+| 81 | SO_EVENTMASK: no spurious events on idle socket | Skipped (depends on SO_EVENTMASK infrastructure). |
+| 82 | SO_EVENTMASK FD_ACCEPT: signal on incoming | Signal not delivered after incoming connection. |
+| 83 | SO_EVENTMASK FD_CLOSE: signal on peer disconnect | Signal not delivered after peer closes connection. |
+| 84 | GetSocketEvents(): event consumed after retrieval | Skipped (depends on SO_EVENTMASK infrastructure). |
+| 85 | GetSocketEvents(): round-robin across sockets | Skipped (depends on SO_EVENTMASK infrastructure). |
+| 87 | WaitSelect + signals: stress test (50 iterations) | Skipped (uses SO_EVENTMASK). |
 
 ### Failures (12)
 
@@ -163,27 +170,27 @@ skips these to avoid killing the emulator process.
 
 | Test | Description | Detail |
 |-----:|-------------|--------|
-| 63 | WaitSelect(): all NULL fdsets + timeout = delay | Returns immediately instead of honoring the timeout. Same as Amiberry. |
+| 63 | WaitSelect(): all NULL fdsets + timeout = delay | Returns immediately (elapsed 0ms) instead of honoring the timeout as a pure delay. |
 | 69 | WaitSelect(): nfds = highest_fd + 1 | `WaitSelect()` with `nfds=fd` (should exclude fd) returns the same result as `nfds=fd+1`. The `nfds` upper bound is not enforced. |
-| 78 | SocketBaseTags(SBTC_DTABLESIZE): get/set table size | Same as Amiberry: GET returns 0 instead of 64. |
-| 128 | getdtablesize(): reflects SBTC_DTABLESIZE change | Same as Amiberry: cannot test due to GET returning 0. |
+| 78 | SocketBaseTags(SBTC_DTABLESIZE): get/set table size | `SBTM_GETVAL(SBTC_DTABLESIZE)` returns 0 instead of 128. Note: `getdtablesize()` correctly returns 128 (test 127), indicating a separate working code path. |
+| 128 | getdtablesize(): reflects SBTC_DTABLESIZE change | Cannot be tested because the prerequisite SBTC_DTABLESIZE GET returns 0. |
 
 #### DNS / name resolution
 
 | Test | Description | Detail |
 |-----:|-------------|--------|
-| 98 | gethostname(): retrieve hostname | Same as Amiberry: returns empty string. |
+| 98 | gethostname(): retrieve hostname | Returns success (rc=0) but the hostname string is empty. |
 
 #### Address utilities
 
 | Test | Description | Detail |
 |-----:|-------------|--------|
-| 111 | Inet_LnaOf(): extract host part | Same as Amiberry: returns 0. |
-| 112 | Inet_NetOf(): extract network part | Same as Amiberry: returns 0. |
-| 113 | Inet_MakeAddr(): round-trip with LnaOf/NetOf | Same as Amiberry: returns 0. |
+| 111 | Inet_LnaOf(): extract host part | Returns 0x000000 instead of 0x010203 for address 10.1.2.3. The function appears to be a stub. |
+| 112 | Inet_NetOf(): extract network part | Returns 0x00 instead of 0x0a for address 10.1.2.3. The function appears to be a stub. |
+| 113 | Inet_MakeAddr(): round-trip with LnaOf/NetOf | Returns 0x00000000 instead of 0x0a010203. Broken because `Inet_LnaOf()` and `Inet_NetOf()` both return 0. |
 
 #### Unimplemented functions
 
 | Test | Description | Detail |
 |-----:|-------------|--------|
-| 116 | Dup2Socket(fd, target): duplicate to specific slot | Same as Amiberry: target parameter ignored. |
+| 116 | Dup2Socket(fd, target): duplicate to specific slot | `Dup2Socket(fd, 10)` returns fd 0 instead of target slot 10. The `target` parameter is ignored. |
