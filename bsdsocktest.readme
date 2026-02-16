@@ -2,7 +2,7 @@ Short:    Amiga bsdsocket.library conformance test suite
 Uploader: thomas@tfenet.com (Thomas Dye)
 Author:   thomas@tfenet.com (Thomas Dye)
 Type:     comm/tcp
-Version:  0.2.0
+Version:  0.2.2
 Requires: AmigaOS 2.0+, 68020+, bsdsocket.library compatible TCP/IP stack
 Architecture: m68k-amigaos
 

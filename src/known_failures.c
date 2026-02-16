@@ -52,21 +52,14 @@ static const struct known_entry roadshow_entries[] = {
 static const struct known_entry amiberry_entries[] = {
     /* Crashes: exercising these operations causes exit(1) */
     { 70, KNOWN_CRASH,   "WaitSelect >64 fds crashes emulator" },
-    { 79, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 80, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 81, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 82, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 83, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 84, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 85, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
-    { 87, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
     /* Failures: tests run but produce wrong results */
     { 31, KNOWN_FAILURE, "sendmsg() not implemented" },
     { 32, KNOWN_FAILURE, "recvmsg() not implemented" },
     { 49, KNOWN_FAILURE, "SO_RCVTIMEO set/get roundtrip fails" },
     { 50, KNOWN_FAILURE, "SO_SNDTIMEO set/get roundtrip fails" },
-    { 63, KNOWN_FAILURE, "WaitSelect NULL fdsets returns immediately" },
     { 78, KNOWN_FAILURE, "SBTC_DTABLESIZE GET returns 0" },
+    { 81, KNOWN_FAILURE, "SO_EVENTMASK fires spurious event on idle socket" },
+    { 83, KNOWN_FAILURE, "SO_EVENTMASK FD_CLOSE not delivered on peer disconnect" },
     { 93, KNOWN_FAILURE, "getservbyname() unknown service not returning NULL" },
     { 94, KNOWN_FAILURE, "getservbyport() returns wrong service name" },
     { 98, KNOWN_FAILURE, "gethostname() returns empty string" },

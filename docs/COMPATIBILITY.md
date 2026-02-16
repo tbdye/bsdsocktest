@@ -43,7 +43,7 @@ The bsdsocket emulation intercepts Amiga socket library calls and maps them
 to host-side socket operations. It does not use SANA-II or any NIC-level
 emulation. Enable with `bsdsocket_emu=true` in the .uae configuration.
 
-### Crashes (9)
+### Crashes (1)
 
 These operations cause the emulator to `exit(1)`. The test suite skips them
 to avoid killing the emulator process.
@@ -51,21 +51,8 @@ to avoid killing the emulator process.
 | Test | Description | Root Cause |
 |-----:|-------------|------------|
 | 70 | WaitSelect(): >64 descriptors | Internal fd mapping array appears hardcoded to 64 entries. Passing `nfds > 64` causes an out-of-bounds access leading to `exit(1)`. Also triggered by `SBTC_DTABLESIZE SET` (test 78 guards against this). |
-| 79 | SO_EVENTMASK FD_READ: signal on data arrival | Setting `SO_EVENTMASK` via `setsockopt()` starts a `bsdsock_event_monitor` thread that immediately causes `exit(1)`. |
-| 80 | SO_EVENTMASK FD_CONNECT: signal on connect | Same root cause as test 79. |
-| 81 | SO_EVENTMASK: no spurious events on idle socket | Same root cause as test 79. |
-| 82 | SO_EVENTMASK FD_ACCEPT: signal on incoming | Same root cause as test 79. |
-| 83 | SO_EVENTMASK FD_CLOSE: signal on peer disconnect | Same root cause as test 79. |
-| 84 | GetSocketEvents(): event consumed after retrieval | Same root cause as test 79. |
-| 85 | GetSocketEvents(): round-robin across sockets | Same root cause as test 79. |
-| 87 | WaitSelect + signals: stress test (50 iterations) | Same root cause as test 79 (test uses SO_EVENTMASK). |
 
-**Summary:** Two distinct crash bugs. SO_EVENTMASK accounts for 8 of the 9
-crashes --- fixing the event monitor thread would resolve tests 79--85 and 87
-in one change. The WaitSelect >64 fd crash (test 70) is a separate bounds
-check issue.
-
-### Failures (15)
+### Failures (16)
 
 These tests run but produce incorrect results.
 
@@ -84,11 +71,17 @@ These tests run but produce incorrect results.
 | 49 | SO_RCVTIMEO: set receive timeout | `setsockopt()` accepts the value but `getsockopt()` does not return it. The timeout is also not enforced on blocking `recv()`. |
 | 50 | SO_SNDTIMEO: set send timeout | Same as test 49 but for send timeouts. |
 
+#### Signal / event notification
+
+| Test | Description | Detail |
+|-----:|-------------|--------|
+| 81 | SO_EVENTMASK: no spurious events on idle socket | `GetSocketEvents()` returns a spurious event on a socket with no activity. A socket with `SO_EVENTMASK` set but no actual I/O must not generate events. |
+| 83 | SO_EVENTMASK FD_CLOSE: signal on peer disconnect | The `FD_CLOSE` event signal is not delivered when the remote peer closes the connection. `GetSocketEvents()` does not report the close event. |
+
 #### WaitSelect / descriptor table
 
 | Test | Description | Detail |
 |-----:|-------------|--------|
-| 63 | WaitSelect(): all NULL fdsets + timeout = delay | Returns immediately (elapsed 0ms) instead of honoring the timeout as a pure delay. |
 | 78 | SocketBaseTags(SBTC_DTABLESIZE): get/set table size | `SBTM_GETVAL(SBTC_DTABLESIZE)` returns 0 instead of 64. Note: `getdtablesize()` correctly returns 64 (test 127), indicating a separate working code path. `SBTM_SETVAL(SBTC_DTABLESIZE)` crashes the emulator (guarded by the GET check). |
 | 128 | getdtablesize(): reflects SBTC_DTABLESIZE change | Cannot be tested because the prerequisite SBTC_DTABLESIZE GET returns 0 (same underlying bug as test 78). |
 
