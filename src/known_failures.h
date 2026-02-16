@@ -12,7 +12,8 @@
 /* Initialize known-failures table from the detected stack version string.
  * Call once after opening bsdsocket.library, before running any tests.
  * version_string: the SBTC_RELEASESTRPTR value (e.g. "Roadshow 4.364").
- * If the stack is not recognized, no failures are marked as known. */
+ * Matched exactly against known profiles; unrecognized stacks get no
+ * annotations. */
 void known_init(const char *version_string);
 
 /* Check if a given test number is a known issue (failure or crash)

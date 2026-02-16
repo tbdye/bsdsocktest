@@ -10,7 +10,7 @@ Cross-compiled C targeting m68k AmigaOS (68020+).
 ## Documentation
 
 - [docs/TESTS.md](docs/TESTS.md) --- Per-test reference covering all 142 tests: what each validates, methodology, and expected behavior
-- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) --- Known issues per TCP/IP stack, with root cause analysis and fix priorities
+- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) --- Known issues per TCP/IP stack, with root cause analysis
 - [docs/AMITCP_API.md](docs/AMITCP_API.md) --- Programmer's reference for the Amiga bsdsocket.library API, focusing on differences from standard BSD sockets
 - [host/README.md](host/README.md) --- Setup and usage guide for the host helper script required by network-tier tests
 

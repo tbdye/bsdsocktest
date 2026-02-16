@@ -1,30 +1,22 @@
 /*
  * bsdsocktest — Known failure and crash detection per TCP/IP stack
  *
- * Auto-detects the running stack from SBTC_RELEASESTRPTR, parses the
- * version number, and looks up known issues in a per-stack table.
+ * Auto-detects the running stack from SBTC_RELEASESTRPTR and looks up
+ * known issues in a per-stack table.
  *
- * Two types of entries, both version-gated:
+ * Two types of entries:
  *   KNOWN_FAILURE — test runs and fails; framework annotates as "known"
  *   KNOWN_CRASH   — test would crash the emulator; must be skipped
  *
- * Version gating: entries apply only when the detected version is <=
- * the profile's max_version. When a stack ships a fix and bumps its
- * version, the guards stop applying automatically — no code changes.
+ * Matching: the detected version string (e.g. "UAE 8.0.0") is compared
+ * against each profile's match_version using exact string match.
+ * Unrecognized stacks get no annotations.
  */
 
 #include "known_failures.h"
 
 #include <stddef.h>
 #include <string.h>
-
-/* ---- Version representation ---- */
-
-struct stack_version {
-    int major;
-    int minor;
-    int patch;
-};
 
 /* ---- Entry types ---- */
 
@@ -40,14 +32,13 @@ struct known_entry {
 };
 
 struct stack_profile {
-    const char *match_prefix;       /* prefix match against version string */
+    const char *match_version;      /* exact match against version string */
     const char *stack_name;         /* display name */
-    struct stack_version max_version; /* entries apply to versions <= this */
     const struct known_entry *entries;
     int entry_count;
 };
 
-/* ---- Roadshow (verified against 4.364 and 4.347) ---- */
+/* ---- Roadshow (verified against 4.364) ---- */
 
 static const struct known_entry roadshow_entries[] = {
     { 27, KNOWN_FAILURE, "recv(MSG_OOB) returns EINVAL" },
@@ -56,9 +47,9 @@ static const struct known_entry roadshow_entries[] = {
     { 77, KNOWN_FAILURE, "SBTC_HERRNOLONGPTR GET not supported (SET-only)" },
 };
 
-/* ---- UAE / Amiberry bsdsocket emulation (verified against 8.0.0) ---- */
+/* ---- Amiberry bsdsocket emulation (verified against UAE 8.0.0) ---- */
 
-static const struct known_entry uae_entries[] = {
+static const struct known_entry amiberry_entries[] = {
     /* Crashes: exercising these operations causes exit(1) */
     { 70, KNOWN_CRASH,   "WaitSelect >64 fds crashes emulator" },
     { 79, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
@@ -87,104 +78,75 @@ static const struct known_entry uae_entries[] = {
     { 128, KNOWN_FAILURE, "SBTC_DTABLESIZE GET returns 0" },
 };
 
+/* ---- WinUAE bsdsocket emulation (verified against UAE 6.0.2) ---- */
+
+static const struct known_entry winuae_entries[] = {
+    /* Crashes: assumed same as Amiberry until tested without guards */
+    { 70, KNOWN_CRASH,   "WaitSelect >64 fds crashes emulator" },
+    { 79, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    { 80, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    { 81, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    { 82, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    { 83, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    { 84, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    { 85, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    { 87, KNOWN_CRASH,   "SO_EVENTMASK crashes emulator" },
+    /* Failures: tests run but produce wrong results */
+    { 35, KNOWN_FAILURE, "send after peer close returns wrong errno" },
+    { 48, KNOWN_FAILURE, "SO_LINGER set/get roundtrip fails" },
+    { 52, KNOWN_FAILURE, "SO_ERROR not set after failed connect" },
+    { 63, KNOWN_FAILURE, "WaitSelect NULL fdsets returns immediately" },
+    { 69, KNOWN_FAILURE, "WaitSelect nfds not enforced" },
+    { 78, KNOWN_FAILURE, "SBTC_DTABLESIZE GET returns 0" },
+    { 98, KNOWN_FAILURE, "gethostname() returns empty string" },
+    { 111, KNOWN_FAILURE, "Inet_LnaOf() returns 0" },
+    { 112, KNOWN_FAILURE, "Inet_NetOf() returns 0" },
+    { 113, KNOWN_FAILURE, "Inet_MakeAddr() returns 0 (LnaOf/NetOf broken)" },
+    { 116, KNOWN_FAILURE, "Dup2Socket() to specific slot not implemented" },
+    { 128, KNOWN_FAILURE, "SBTC_DTABLESIZE GET returns 0" },
+};
+
 /* ---- Profile table ---- */
 
 static const struct stack_profile profiles[] = {
     {
+        "Roadshow 4.364",
         "Roadshow",
-        "Roadshow",
-        { 4, 364, 0 },
         roadshow_entries,
         sizeof(roadshow_entries) / sizeof(roadshow_entries[0])
     },
     {
-        "UAE",
-        "UAE",
-        { 8, 0, 0 },
-        uae_entries,
-        sizeof(uae_entries) / sizeof(uae_entries[0])
+        "UAE 8.0.0",
+        "Amiberry",
+        amiberry_entries,
+        sizeof(amiberry_entries) / sizeof(amiberry_entries[0])
+    },
+    {
+        "UAE 6.0.2",
+        "WinUAE",
+        winuae_entries,
+        sizeof(winuae_entries) / sizeof(winuae_entries[0])
     },
 };
 
 #define NUM_PROFILES (int)(sizeof(profiles) / sizeof(profiles[0]))
 
 static const struct stack_profile *active_profile;
-static struct stack_version detected_version;
-
-/* ---- Version parsing ---- */
-
-/* Parse "X.Y.Z", "X.Y", or "X" from a string (after the prefix).
- * Skips leading whitespace.  Returns number of components parsed. */
-static int parse_version(const char *s, struct stack_version *v)
-{
-    int components = 0;
-    int val = 0;
-    int has_digit = 0;
-
-    v->major = 0;
-    v->minor = 0;
-    v->patch = 0;
-
-    while (*s == ' ')
-        s++;
-
-    while (*s) {
-        if (*s >= '0' && *s <= '9') {
-            val = val * 10 + (*s - '0');
-            has_digit = 1;
-        } else if (*s == '.' && has_digit) {
-            if (components == 0)      v->major = val;
-            else if (components == 1) v->minor = val;
-            else break;
-            components++;
-            val = 0;
-            has_digit = 0;
-        } else {
-            break;
-        }
-        s++;
-    }
-
-    if (has_digit) {
-        if (components == 0)      v->major = val;
-        else if (components == 1) v->minor = val;
-        else if (components == 2) v->patch = val;
-        components++;
-    }
-
-    return components;
-}
-
-/* Return non-zero if a <= b (lexicographic comparison). */
-static int version_lte(const struct stack_version *a,
-                       const struct stack_version *b)
-{
-    if (a->major != b->major) return a->major < b->major;
-    if (a->minor != b->minor) return a->minor < b->minor;
-    return a->patch <= b->patch;
-}
 
 /* ---- Public API ---- */
 
 void known_init(const char *version_string)
 {
     int i;
-    size_t prefix_len;
 
     active_profile = NULL;
-    detected_version.major = 0;
-    detected_version.minor = 0;
-    detected_version.patch = 0;
 
     if (!version_string)
         return;
 
     for (i = 0; i < NUM_PROFILES; i++) {
-        prefix_len = strlen(profiles[i].match_prefix);
-        if (strncmp(version_string, profiles[i].match_prefix,
-                    prefix_len) == 0) {
+        if (strcmp(version_string, profiles[i].match_version) == 0) {
             active_profile = &profiles[i];
-            parse_version(version_string + prefix_len, &detected_version);
             return;
         }
     }
@@ -197,10 +159,6 @@ static const char *lookup(int test_number, int filter_type)
     int i;
 
     if (!active_profile)
-        return NULL;
-
-    /* Version gate: entries only apply to versions <= max_version */
-    if (!version_lte(&detected_version, &active_profile->max_version))
         return NULL;
 
     for (i = 0; i < active_profile->entry_count; i++) {
